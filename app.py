@@ -10,14 +10,14 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 
-# --- 1. CONFIG & STYLING (Sacred Template) ---
+# --- 1. CONFIG & STYLING (Sacred Template + Photo Colors) ---
 st.set_page_config(page_title="Cyfer Pro: Secret Language", layout="centered")
 
 raw_pepper = st.secrets.get("MY_SECRET_PEPPER") or "default_fallback_spice_2026"
 PEPPER = str(raw_pepper).encode()
 U_MOD = 256 
 ROUNDS = 3
-EMOJI_START = 0x1F300 # Start of the dense 1:1 emoji block
+EMOJI_START = 0x1F300 
 
 st.markdown(f"""
     <style>
@@ -29,27 +29,27 @@ st.markdown(f"""
     .stTextArea > div > div > textarea,
     input::placeholder, textarea::placeholder {{
         background-color: #FEE2E9 !important;
-        color: #7E60BF !important; 
+        color: #B4A7D6 !important; 
         border: 2px solid #B4A7D6 !important;
         font-family: "Courier New", Courier, monospace !important;
         font-size: 18px !important;
         font-weight: bold !important;
     }}
 
-    .stProgress > div > div > div > div {{ background-color: #7E60BF !important; }}
+    .stProgress > div > div > div > div {{ background-color: #B4A7D6 !important; }}
 
     [data-testid="column"], [data-testid="stVerticalBlock"] > div {{ width: 100% !important; flex: 1 1 100% !important; }}
     .stButton, .stButton > button {{ width: 100% !important; display: block !important; }}
 
-    /* ACTION BUTTONS - Signature Deep Purple */
+    /* ACTION BUTTONS - Updated to #B4A7D6 from photo */
     div.stButton > button {{
-        background-color: #7E60BF !important; 
+        background-color: #B4A7D6 !important; 
         color: #FFD4E5 !important;
         border-radius: 15px !important;
         min-height: 100px !important; 
         border: none !important;
         text-transform: uppercase;
-        box-shadow: 0px 6px 0px #5E448F;
+        box-shadow: 0px 4px 12px rgba(0,0,0,0.15);
         margin-top: 15px !important;
     }}
 
@@ -61,41 +61,40 @@ st.markdown(f"""
         text-align: center !important;
     }}
 
-    /* DESTROY BUTTON */
+    /* DESTROY BUTTON - Updated to #D1C4E9 from photo */
     div[data-testid="stVerticalBlock"] > div:last-child .stButton > button {{
         min-height: 70px !important;
-        background-color: #B4A7D6 !important;
-        box-shadow: 0px 4px 0px #8E7DB3;
+        background-color: #D1C4E9 !important;
+        border: none !important;
     }}
     div[data-testid="stVerticalBlock"] > div:last-child .stButton > button p {{ font-size: 24px !important; }}
 
     .result-box {{
-        background-color: #FEE2E9; color: #7E60BF; padding: 15px;
+        background-color: #FEE2E9; color: #B4A7D6; padding: 15px;
         border-radius: 10px; font-family: "Courier New", monospace !important;
-        border: 2px solid #7E60BF; word-wrap: break-word;
+        border: 2px solid #B4A7D6; word-wrap: break-word;
         margin-top: 15px; font-weight: bold; text-align: center; font-size: 24px;
     }}
 
     .whisper-text {{
-        color: #7E60BF; font-family: "Courier New", monospace !important;
+        color: #B4A7D6; font-family: "Courier New", monospace !important;
         font-weight: bold; font-size: 26px; margin-top: 20px;
-        border-top: 2px dashed #7E60BF; padding-top: 15px; text-align: center;
+        border-top: 2px dashed #B4A7D6; padding-top: 15px; text-align: center;
     }}
 
     .footer-text {{
-        color: #7E60BF; font-family: "Courier New", Courier, monospace;
+        color: #B4A7D6; font-family: "Courier New", Courier, monospace;
         font-size: 22px; font-weight: bold; margin-top: 15px;
         letter-spacing: 2px; text-align: center;
     }}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DENSE ENGINE (1 Byte : 1 Emoji) ---
+# --- 2. DENSE ENGINE ---
 def to_emoji(val):
     return chr(EMOJI_START + (val % 256))
 
 def from_emoji_string(s):
-    # Extracts bytes from the emoji characters
     return [(ord(char) - EMOJI_START) % 256 for char in s if EMOJI_START <= ord(char) < EMOJI_START + 1024]
 
 def get_keys_and_perms(kw):
@@ -154,13 +153,10 @@ if kw and (kiss_btn or tell_btn):
     
     if kiss_btn:
         data = user_input.encode('utf-8')
-        # 4-byte Nonce for freshness
         nonce_bytes = [secrets.randbelow(256) for _ in range(4)]
         prev = int.from_bytes(hashlib.sha256(bytes(nonce_bytes)).digest()[:1], 'big')
         
-        # Start result with nonce emojis
         res_emojis = [to_emoji(b) for b in nonce_bytes]
-        
         for byte in data:
             current = byte ^ prev
             for r in range(ROUNDS):
@@ -172,7 +168,7 @@ if kw and (kiss_btn or tell_btn):
         final_output = "".join(res_emojis)
         with output_placeholder.container():
             st.markdown(f'<div class="result-box">{final_output}</div>', unsafe_allow_html=True)
-            components.html(f"""<button onclick="navigator.share({{title:'Secret',text:`{final_output}\\n\\nHint: {hint_text}`}})" style="background-color:#7E60BF; color:#FFD4E5; font-weight:bold; border-radius:15px; min-height:80px; width:100%; cursor:pointer; font-size: 28px; border:none; text-transform:uppercase;">SHARE ✨</button>""", height=100)
+            components.html(f"""<button onclick="navigator.share({{title:'Secret',text:`{final_output}\\n\\nHint: {hint_text}`}})" style="background-color:#B4A7D6; color:#FFD4E5; font-weight:bold; border-radius:15px; min-height:80px; width:100%; cursor:pointer; font-size: 28px; border:none; text-transform:uppercase;">SHARE ✨</button>""", height=100)
 
     if tell_btn:
         try:
