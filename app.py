@@ -36,12 +36,14 @@ st.markdown(f"""
         font-weight: bold !important;
     }}
 
-    .stProgress > div > div > div > div {{ background-color: #B4A7D6 !important; }}
+    .stProgress > div > div > div > div {{ 
+        background-color: #B4A7D6 !important; 
+        box-shadow: 0px 0px 10px rgba(180, 167, 214, 0.5);
+    }}
 
     [data-testid="column"], [data-testid="stVerticalBlock"] > div {{ width: 100% !important; flex: 1 1 100% !important; }}
     .stButton, .stButton > button {{ width: 100% !important; display: block !important; }}
 
-    /* ACTION BUTTONS - Updated to #B4A7D6 from photo */
     div.stButton > button {{
         background-color: #B4A7D6 !important; 
         color: #FFD4E5 !important;
@@ -61,7 +63,6 @@ st.markdown(f"""
         text-align: center !important;
     }}
 
-    /* DESTROY BUTTON - Updated to #D1C4E9 from photo */
     div[data-testid="stVerticalBlock"] > div:last-child .stButton > button {{
         min-height: 70px !important;
         background-color: #D1C4E9 !important;
@@ -97,6 +98,18 @@ def to_emoji(val):
 def from_emoji_string(s):
     return [(ord(char) - EMOJI_START) % 256 for char in s if EMOJI_START <= ord(char) < EMOJI_START + 1024]
 
+def calculate_chemistry(password):
+    if not password: return 0.0
+    score = 0
+    # Length check (up to 40% of bar)
+    score += min(len(password) / 16, 1.0) * 0.4
+    # Character diversity checks (60% of bar)
+    if any(c.islower() for c in password): score += 0.15
+    if any(c.isupper() for c in password): score += 0.15
+    if any(c.isdigit() for c in password): score += 0.15
+    if any(re.search(r"[ !@#$%^&*(),.?\":{}|<>]", c) for c in password): score += 0.15
+    return min(score, 1.0)
+
 def get_keys_and_perms(kw):
     kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=64, salt=b"dense_v4_salt", iterations=100000, backend=default_backend())
     master_key = kdf.derive(kw.encode() + PEPPER)
@@ -124,13 +137,10 @@ if os.path.exists("Lock Lips.png"): st.image("Lock Lips.png")
 
 kw = st.text_input("Key", type="password", key="lips", placeholder="SECRET KEY").strip()
 
-if kw:
-    lvl = min(len(kw)/12.0, 1.0)
-    st.write(f"🧪 **CHEMISTRY LEVEL:** {int(lvl*100)}%")
-    st.progress(lvl)
-else:
-    st.write("🧪 **CHEMISTRY LEVEL:** 0%")
-    st.progress(0.0)
+# EXPANDED CHEMISTRY LEVEL BAR
+chem_lvl = calculate_chemistry(kw)
+st.write(f"🧪 **CHEMISTRY LEVEL:** {int(chem_lvl*100)}%")
+st.progress(chem_lvl)
 
 hint_text = st.text_input("Hint", key="hint", placeholder="KEY HINT (Optional)")
 
