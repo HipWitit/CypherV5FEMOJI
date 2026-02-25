@@ -14,7 +14,6 @@ st.set_page_config(page_title="Cyfer Pro", layout="centered")
 VERSION_BYTE = b'\x02' 
 SALT_SIZE = 16
 NONCE_SIZE = 12 
-
 T_COST = 3
 M_COST = 65536 
 P_FACTOR = 4
@@ -46,45 +45,44 @@ st.markdown(f"""
     .main .block-container {{ padding-bottom: 150px !important; position: relative; }}
     div[data-testid="stWidgetLabel"], label {{ display: none !important; }}
 
-    /* GLOWING PULSE ANIMATION */
-    @keyframes pulse-glow {{
-        0% {{ box-shadow: 0 0 5px #B4A7D6, 0 0 10px #B4A7D6; transform: scale(1); }}
-        50% {{ box-shadow: 0 0 15px #FFD4E5, 0 0 20px #B4A7D6; transform: scale(1.05); }}
-        100% {{ box-shadow: 0 0 5px #B4A7D6, 0 0 10px #B4A7D6; transform: scale(1); }}
+    /* MAGICAL GLOW ANIMATION */
+    @keyframes orb-glow {{
+        0% {{ box-shadow: 0 0 5px #B4A7D6, 0 0 10px #B4A7D6; filter: brightness(1); }}
+        50% {{ box-shadow: 0 0 15px #FFD4E5, 0 0 25px #B4A7D6; filter: brightness(1.2); }}
+        100% {{ box-shadow: 0 0 5px #B4A7D6, 0 0 10px #B4A7D6; filter: brightness(1); }}
     }}
 
-    /* THE PURPLE DOT (INFO BUTTON) */
-    /* We use !important on everything to stop Streamlit from stretching it */
+    /* THE MINI INFO ORB (THE PURPLE DOT) */
     button[key="info_orb"] {{
         position: fixed !important;
-        top: 485px !important; /* Adjusted for mobile view positioning */
-        right: 35px !important;
-        width: 45px !important;
-        height: 45px !important;
-        min-width: 45px !important;
-        max-width: 45px !important;
-        min-height: 45px !important;
-        max-height: 45px !important;
+        top: 480px !important; 
+        right: 45px !important;
+        width: 42px !important;
+        height: 42px !important;
+        min-width: 42px !important;
+        max-width: 42px !important;
+        min-height: 42px !important;
+        max-height: 42px !important;
         border-radius: 50% !important;
         background-color: #B4A7D6 !important;
         color: #FFD4E5 !important;
         border: 2px solid #FEE2E9 !important;
-        z-index: 99999 !important;
+        z-index: 10000 !important;
         padding: 0 !important;
-        line-height: 45px !important;
-        animation: pulse-glow 3s infinite ease-in-out !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
+        animation: orb-glow 3s infinite ease-in-out !important;
     }}
 
     button[key="info_orb"] p {{
-        font-size: 10px !important;
+        font-family: "Courier New", monospace !important;
+        font-size: 9px !important;
+        font-weight: 900 !important;
         margin: 0 !important;
-        padding: 0 !important;
-        font-weight: bold !important;
     }}
 
+    /* Standard Input Styling */
     .stTextInput > div > div > input, 
     .stTextArea > div > div > textarea,
     input::placeholder, textarea::placeholder {{
@@ -98,12 +96,9 @@ st.markdown(f"""
 
     .stProgress > div > div > div > div {{ 
         background-color: #B4A7D6 !important; 
-        box-shadow: 0px 0px 10px rgba(180, 167, 214, 0.5);
     }}
 
-    [data-testid="column"], [data-testid="stVerticalBlock"] > div {{ width: 100% !important; flex: 1 1 100% !important; }}
-    
-    /* Global button override - we exclude the info_orb here */
+    /* Standard Button Styling */
     div.stButton > button:not([key="info_orb"]) {{
         background-color: #B4A7D6 !important; 
         color: #FFD4E5 !important;
@@ -118,7 +113,11 @@ st.markdown(f"""
     div.stButton > button:not([key="info_orb"]) p {{
         font-size: 38px !important; 
         font-weight: 800 !important;
-        line-height: 1.1 !important;
+    }}
+
+    div[data-testid="stVerticalBlock"] > div:last-child .stButton > button {{
+        min-height: 70px !important;
+        background-color: #D1C4E9 !important;
     }}
 
     .result-box {{
@@ -148,16 +147,16 @@ def show_help():
     st.markdown(f"""
     <div style="font-family: 'Courier New', Courier, monospace; color: #B4A7D6;">
     <h3 style="color: #B4A7D6;">🧪 Refining Secrets</h3>
-    <p>1. <b>The Key:</b> Enter a secret word or phrase. This is your combination.</p>
-    <p>2. <b>The Hint:</b> If you use one, it becomes part of the lock. You <b>must</b> provide the exact same hint to unlock it later.</p>
-    <p>3. PRESS <b>KISS:</b> This turns your message into a string of emojis.</p>
+    <p>1. <b>The Key:</b> Enter a secret word or phrase.</p>
+    <p>2. <b>The Hint:</b> If used, you <b>must</b> provide the exact same hint to unlock it later.</p>
+    <p>3. PRESS <b>KISS:</b> Turns message into emojis.</p>
     
     <h3 style="color: #B4A7D6;">👂 Whispering Secrets</h3>
-    <p>1. Paste the emojis into the <b>Message</b> box.</p>
-    <p>2. Enter the <b>Key</b> and the <b>Hint</b> (if used). <b>IMPORTANT:</b> Key and hint are case sensitive.</p>
-    <p>3. PRESS <b>TELL:</b> This reveals the hidden message that Cypher whispers to you.</p>
+    <p>1. Paste emojis into <b>Message</b>.</p>
+    <p>2. Enter <b>Key</b> and <b>Hint</b> (Case Sensitive).</p>
+    <p>3. PRESS <b>TELL:</b> Reveals the secret.</p>
     <hr style="border: 1px dashed #B4A7D6;">
-    <p><i>Note: If the hint or key is off by even a single space, the chemistry will fail!</i></p>
+    <p><i>Note: One stray space will break the chemistry!</i></p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -180,7 +179,7 @@ def clear_everything():
         if k in st.session_state: st.session_state[k] = ""
 
 # --- 4. UI ELEMENTS ---
-# The Info Dot
+# THE GLOWING INFO ORB
 st.button("INFO", key="info_orb", on_click=show_help)
 
 if os.path.exists("CYPHER.png"): st.image("CYPHER.png")
@@ -212,7 +211,7 @@ if kw and (kiss_btn or tell_btn):
         if kiss_btn:
             salt = secrets.token_bytes(SALT_SIZE)
             nonce = secrets.token_bytes(NONCE_SIZE)
-            with st.spinner("Refining Chemistry..."):
+            with st.spinner("Refining..."):
                 key = get_derived_key(kw, salt, T_COST, M_COST, P_FACTOR)
                 aead = ChaCha20Poly1305(key)
                 ciphertext = aead.encrypt(nonce, user_input.encode(), aad)
@@ -224,15 +223,14 @@ if kw and (kiss_btn or tell_btn):
                 components.html(f"""<button onclick="navigator.share({{title:'Secret',text:`{output}\\n\\nHint: {hint_text}`}})" style="background-color:#B4A7D6; color:#FFD4E5; font-weight:bold; border-radius:15px; min-height:80px; width:100%; cursor:pointer; font-size: 28px; border:none; text-transform:uppercase;">SHARE ✨</button>""", height=100)
         if tell_btn:
             data = bytes(from_emoji_string(user_input.strip()))
-            version = data[0:1]
-            if version == b'\x02':
+            if data[0:1] == b'\x02':
                 t, m, p = struct.unpack(">BIB", data[1:7])
                 salt, nonce, ciphertext = data[7:23], data[23:35], data[35:]
-                current_aad = aad
-                with st.spinner("Extracting Secret..."):
+                with st.spinner("Extracting..."):
                     key = get_derived_key(kw, salt, t, m, p)
                     aead = ChaCha20Poly1305(key)
-                    msg = aead.decrypt(nonce, ciphertext, current_aad).decode()
+                    msg = aead.decrypt(nonce, ciphertext, aad).decode()
                 output_placeholder.markdown(f'<div class="whisper-text">Cypher Whispers: {msg}</div>', unsafe_allow_html=True)
     except Exception:
-        st.error("🚫 CHEMISTRY ERROR: AUTHENTICATION FAILED. Check Key and Hint.")
+        st.error("🚫 CHEMISTRY ERROR: Check Key and Hint.")
+
