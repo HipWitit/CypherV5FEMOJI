@@ -1,24 +1,20 @@
 import streamlit as st
 import re
 import os
-import random
 import secrets
 import hashlib
-import hmac
-import base64
 import streamlit.components.v1 as components
+from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 
 # --- 1. CONFIG & STYLING ---
-st.set_page_config(page_title="Cyfer Pro: Secret Language", layout="centered")
+st.set_page_config(page_title="Cyfer Pro: ChaCha20", layout="centered")
 
 raw_pepper = st.secrets.get("MY_SECRET_PEPPER") or "default_fallback_spice_2026"
 PEPPER = str(raw_pepper).encode()
-U_MOD = 256 
-ROUNDS = 3
-NONCE_SIZE = 12 
+NONCE_SIZE = 12 # Standard for ChaCha20-Poly1305
 
 @st.cache_data
 def get_stable_emoji_list():
@@ -40,7 +36,7 @@ def from_emoji_string(s):
     emojis = re.findall(r'.', s, re.UNICODE)
     return [EMOJI_TO_BYTE[char] for char in emojis if char in EMOJI_TO_BYTE]
 
-# --- 2. THE CSS (Restoring Sacred Layout) ---
+# --- 2. THE CSS (Preserving Sacred Layout) ---
 st.markdown(f"""
     <style>
     .stApp {{ background-color: #DBDCFF !important; }}
@@ -112,28 +108,16 @@ st.markdown(f"""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. ENGINE LOGIC (PRF-Driven Fisher-Yates) ---
-def get_keys_and_perms(kw):
-    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=64, salt=b"affine_v5_stable", iterations=100000, backend=default_backend())
-    master_key = kdf.derive(kw.encode() + PEPPER)
-    enc_key, auth_key = master_key[:32], master_key[32:]
-    
-    rounds_params = []
-    for i in range(ROUNDS):
-        round_seed = hmac.new(enc_key, i.to_bytes(4, 'big'), hashlib.sha256).digest()
-        
-        # Fisher-Yates Shuffle driven by PRF
-        p_list = list(range(256))
-        for j in range(255, 0, -1):
-            index_bytes = hmac.new(round_seed, j.to_bytes(4, 'big'), hashlib.sha256).digest()
-            k = int.from_bytes(index_bytes, 'big') % (j + 1)
-            p_list[j], p_list[k] = p_list[k], p_list[j]
-        
-        h_affine = hashlib.sha256(round_seed + b"affine").digest()
-        a = (int.from_bytes(h_affine[:4], 'big') % 127) * 2 + 1 
-        b = int.from_bytes(h_affine[4:8], 'big') % 256
-        rounds_params.append({'a': a, 'b': b, 'p': p_list, 'inv_p': [p_list.index(v) for v in range(256)]})
-    return rounds_params, auth_key
+# --- 3. ENGINE LOGIC (ChaCha20-Poly1305) ---
+def get_aead_key(kw):
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b"sacred_chacha_v1",
+        iterations=100000,
+        backend=default_backend()
+    )
+    return kdf.derive(kw.encode() + PEPPER)
 
 def calculate_chemistry(password):
     if not password: return 0.0
@@ -153,8 +137,9 @@ if os.path.exists("CYPHER.png"): st.image("CYPHER.png")
 if os.path.exists("Lock Lips.png"): st.image("Lock Lips.png")
 
 kw = st.text_input("Key", type="password", key="lips", placeholder="SECRET KEY").strip()
-st.write(f"🧪 **CHEMISTRY LEVEL:** {int(calculate_chemistry(kw)*100)}%")
-st.progress(calculate_chemistry(kw))
+chem_lvl = calculate_chemistry(kw)
+st.write(f"🧪 **CHEMISTRY LEVEL:** {int(chem_lvl*100)}%")
+st.progress(chem_lvl)
 
 hint_text = st.text_input("Hint", key="hint", placeholder="KEY HINT (Optional)")
 if os.path.exists("Kiss Chemistry.png"): st.image("Kiss Chemistry.png")
@@ -172,42 +157,31 @@ st.markdown('<div class="footer-text">CREATED BY</div>', unsafe_allow_html=True)
 
 # --- 5. PROCESSING ---
 if kw and (kiss_btn or tell_btn):
-    params, auth_key = get_keys_and_perms(kw)
+    key = get_aead_key(kw)
+    chacha = ChaCha20Poly1305(key)
     
     if kiss_btn:
-        nonce = bytes([secrets.randbelow(256) for _ in range(NONCE_SIZE)])
-        raw_payload = nonce + user_input.encode('utf-8')
-        prev = int.from_bytes(hashlib.sha256(b"init").digest()[:1], 'big')
-        cipher_bytes = []
-        for byte in raw_payload:
-            current = byte ^ prev
-            for r in range(ROUNDS):
-                current = params[r]['p'][current]
-                current = (params[r]['a'] * current + params[r]['b']) % 256
-            cipher_bytes.append(current)
-            prev = current
+        nonce = secrets.token_bytes(NONCE_SIZE)
+        # chacha.encrypt returns ciphertext + 16-byte Poly1305 tag
+        ciphertext = chacha.encrypt(nonce, user_input.encode('utf-8'), None)
+        final_payload = nonce + ciphertext
         
-        sig = hmac.new(auth_key, bytes(cipher_bytes), hashlib.sha256).digest()[:16]
-        final_output = "".join(to_emoji(b) for b in (bytes(cipher_bytes) + sig))
+        final_output = "".join(to_emoji(b) for b in final_payload)
         with output_placeholder.container():
             st.markdown(f'<div class="result-box">{final_output}</div>', unsafe_allow_html=True)
             components.html(f"""<button onclick="navigator.share({{title:'Secret',text:`{final_output}\\n\\nHint: {hint_text}`}})" style="background-color:#B4A7D6; color:#FFD4E5; font-weight:bold; border-radius:15px; min-height:80px; width:100%; cursor:pointer; font-size: 28px; border:none; text-transform:uppercase;">SHARE ✨</button>""", height=100)
 
     if tell_btn:
         try:
-            raw = from_emoji_string(user_input.strip())
-            c_part, sig_part = bytes(raw[:-16]), bytes(raw[-16:])
-            if hmac.compare_digest(hmac.new(auth_key, c_part, hashlib.sha256).digest()[:16], sig_part):
-                prev_dec = int.from_bytes(hashlib.sha256(b"init").digest()[:1], 'big')
-                plain = []
-                for c in c_part:
-                    temp = c
-                    for r in reversed(range(ROUNDS)):
-                        a_inv = pow(params[r]['a'], -1, 256)
-                        temp = params[r]['inv_p'][(a_inv * (temp - params[r]['b'])) % 256]
-                    plain.append(temp ^ prev_dec)
-                    prev_dec = c
-                decoded_msg = bytes(plain[NONCE_SIZE:]).decode('utf-8')
-                output_placeholder.markdown(f'<div class="whisper-text">Cypher Whispers: {decoded_msg}</div>', unsafe_allow_html=True)
-            else: st.error("🚫 AUTHENTICATION FAILED")
-        except: st.error("🚫 CHEMISTRY ERROR")
+            byte_data = bytes(from_emoji_string(user_input.strip()))
+            if len(byte_data) < (NONCE_SIZE + 16): # Nonce + Tag
+                raise ValueError("Payload too short")
+            
+            nonce = byte_data[:NONCE_SIZE]
+            ciphertext = byte_data[NONCE_SIZE:]
+            
+            # Poly1305 tag is automatically verified during decryption
+            decrypted_msg = chacha.decrypt(nonce, ciphertext, None).decode('utf-8')
+            output_placeholder.markdown(f'<div class="whisper-text">Cypher Whispers: {decrypted_msg}</div>', unsafe_allow_html=True)
+        except Exception:
+            st.error("🚫 CHEMISTRY ERROR: AUTHENTICATION FAILED. (Wrong key or tampered message)")
