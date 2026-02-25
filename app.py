@@ -10,15 +10,40 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 
-# --- 1. CONFIG & STYLING (Sacred Template + Photo Colors) ---
+# --- 1. CONFIG & STYLING ---
 st.set_page_config(page_title="Cyfer Pro: Secret Language", layout="centered")
 
 raw_pepper = st.secrets.get("MY_SECRET_PEPPER") or "default_fallback_spice_2026"
 PEPPER = str(raw_pepper).encode()
 U_MOD = 256 
 ROUNDS = 3
-EMOJI_START = 0x1F300 
 
+# --- 2. THE STABLE EMOJI MAP ---
+# We use a curated list of 256 stable emojis to avoid Unicode gaps.
+@st.cache_data
+def get_stable_emoji_list():
+    # Curating a set of 256 diverse, high-compatibility emojis
+    # Starting with Miscellaneous Symbols and moving through reliable blocks
+    base_list = []
+    ranges = [(0x1F300, 0x1F3F0), (0x1F400, 0x1F4FF), (0x1F600, 0x1F64F)]
+    for start, end in ranges:
+        for codepoint in range(start, end):
+            if len(base_list) < 256:
+                base_list.append(chr(codepoint))
+    return base_list
+
+STABLE_EMOJIS = get_stable_emoji_list()
+EMOJI_TO_BYTE = {emoji: i for i, emoji in enumerate(STABLE_EMOJIS)}
+
+def to_emoji(val):
+    return STABLE_EMOJIS[val % 256]
+
+def from_emoji_string(s):
+    # This regex extracts each individual emoji safely
+    emojis = re.findall(r'.', s, re.UNICODE)
+    return [EMOJI_TO_BYTE[char] for char in emojis if char in EMOJI_TO_BYTE]
+
+# --- 3. STYLING ---
 st.markdown(f"""
     <style>
     .stApp {{ background-color: #DBDCFF !important; }}
@@ -68,7 +93,6 @@ st.markdown(f"""
         background-color: #D1C4E9 !important;
         border: none !important;
     }}
-    div[data-testid="stVerticalBlock"] > div:last-child .stButton > button p {{ font-size: 24px !important; }}
 
     .result-box {{
         background-color: #FEE2E9; color: #B4A7D6; padding: 15px;
@@ -91,19 +115,11 @@ st.markdown(f"""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DENSE ENGINE ---
-def to_emoji(val):
-    return chr(EMOJI_START + (val % 256))
-
-def from_emoji_string(s):
-    return [(ord(char) - EMOJI_START) % 256 for char in s if EMOJI_START <= ord(char) < EMOJI_START + 1024]
-
+# --- ENGINE & UTILS ---
 def calculate_chemistry(password):
     if not password: return 0.0
     score = 0
-    # Length check (up to 40% of bar)
     score += min(len(password) / 16, 1.0) * 0.4
-    # Character diversity checks (60% of bar)
     if any(c.islower() for c in password): score += 0.15
     if any(c.isupper() for c in password): score += 0.15
     if any(c.isdigit() for c in password): score += 0.15
@@ -111,7 +127,7 @@ def calculate_chemistry(password):
     return min(score, 1.0)
 
 def get_keys_and_perms(kw):
-    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=64, salt=b"dense_v4_salt", iterations=100000, backend=default_backend())
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=64, salt=b"dense_v4_stable", iterations=100000, backend=default_backend())
     master_key = kdf.derive(kw.encode() + PEPPER)
     rounds_params = []
     for i in range(ROUNDS):
@@ -128,22 +144,18 @@ def get_keys_and_perms(kw):
 
 def clear_everything():
     for k in ["lips", "chem", "hint"]:
-        if k in st.session_state: 
-            st.session_state[k] = ""
+        if k in st.session_state: st.session_state[k] = ""
 
-# --- 3. UI LAYOUT (Sacred Order) ---
+# --- UI LAYOUT ---
 if os.path.exists("CYPHER.png"): st.image("CYPHER.png")
 if os.path.exists("Lock Lips.png"): st.image("Lock Lips.png")
 
 kw = st.text_input("Key", type="password", key="lips", placeholder="SECRET KEY").strip()
-
-# EXPANDED CHEMISTRY LEVEL BAR
 chem_lvl = calculate_chemistry(kw)
 st.write(f"🧪 **CHEMISTRY LEVEL:** {int(chem_lvl*100)}%")
 st.progress(chem_lvl)
 
 hint_text = st.text_input("Hint", key="hint", placeholder="KEY HINT (Optional)")
-
 if os.path.exists("Kiss Chemistry.png"): st.image("Kiss Chemistry.png")
 user_input = st.text_area("Message", height=120, key="chem", placeholder="YOUR MESSAGE")
 
@@ -157,7 +169,7 @@ if os.path.exists("LPB.png"):
 
 st.markdown('<div class="footer-text">CREATED BY</div>', unsafe_allow_html=True)
 
-# --- 4. PROCESSING ---
+# --- PROCESSING ---
 if kw and (kiss_btn or tell_btn):
     params = get_keys_and_perms(kw)
     
