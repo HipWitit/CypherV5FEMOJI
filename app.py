@@ -12,12 +12,13 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 
 # --- 1. CONFIG & STYLING ---
-st.set_page_config(page_title="Cyfer Pro: Secret Language", layout="centered")
+st.set_page_config(page_title="Cyfer Pro: High Entropy", layout="centered")
 
 raw_pepper = st.secrets.get("MY_SECRET_PEPPER") or "default_fallback_spice_2026"
 PEPPER = str(raw_pepper).encode()
 U_MOD = 256 
 ROUNDS = 3
+NONCE_SIZE = 12  # Upgraded from 4 to 12 bytes
 
 @st.cache_data
 def get_stable_emoji_list():
@@ -111,7 +112,7 @@ st.markdown(f"""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. ENGINE LOGIC (Master Key Splitting) ---
+# --- 3. ENGINE LOGIC ---
 def calculate_chemistry(password):
     if not password: return 0.0
     score = min(len(password) / 16, 1.0) * 0.4
@@ -122,10 +123,8 @@ def calculate_chemistry(password):
     return min(score, 1.0)
 
 def get_keys_and_perms(kw):
-    # Derive 64 bytes: 32 for Encryption, 32 for HMAC Authentication
     kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=64, salt=b"affine_v5_stable", iterations=100000, backend=default_backend())
     master_key = kdf.derive(kw.encode() + PEPPER)
-    
     enc_key = master_key[:32]
     auth_key = master_key[32:]
     
@@ -168,14 +167,15 @@ if os.path.exists("LPB.png"):
 
 st.markdown('<div class="footer-text">CREATED BY</div>', unsafe_allow_html=True)
 
-# --- 5. PROCESSING (Encrypt-then-MAC) ---
+# --- 5. PROCESSING (Encrypt-then-MAC with 12-byte Nonce) ---
 if kw and (kiss_btn or tell_btn):
     params, auth_key = get_keys_and_perms(kw)
     
     if kiss_btn:
-        nonce_bytes = [secrets.randbelow(256) for _ in range(4)]
+        nonce_bytes = [secrets.randbelow(256) for _ in range(NONCE_SIZE)]
         raw_payload = bytes(nonce_bytes) + user_input.encode('utf-8')
         
+        # Static Initial Vector starts the chain
         prev = int.from_bytes(hashlib.sha256(b"init_vector").digest()[:1], 'big')
         ciphertext_bytes = []
         for byte in raw_payload:
@@ -186,7 +186,7 @@ if kw and (kiss_btn or tell_btn):
             ciphertext_bytes.append(current)
             prev = current
         
-        # --- HMAC SIGNATURE ---
+        # MAC over the ciphertext
         cipher_bytes = bytes(ciphertext_bytes)
         signature = hmac.new(auth_key, cipher_bytes, hashlib.sha256).digest()[:16]
         final_payload = cipher_bytes + signature
@@ -199,17 +199,18 @@ if kw and (kiss_btn or tell_btn):
     if tell_btn:
         try:
             byte_values = from_emoji_string(user_input.strip())
-            if len(byte_values) < 21: # 4 nonce + 1 min byte + 16 HMAC
+            # Minimum length: 12 (nonce) + 1 (message) + 16 (HMAC) = 29
+            if len(byte_values) < (NONCE_SIZE + 1 + 16):
                 raise ValueError("Payload too short")
             
             incoming_cipher = bytes(byte_values[:-16])
             incoming_mac = bytes(byte_values[-16:])
             
-            # --- AUTHENTICATION CHECK ---
+            # Authentication check
             expected_mac = hmac.new(auth_key, incoming_cipher, hashlib.sha256).digest()[:16]
             
             if not hmac.compare_digest(incoming_mac, expected_mac):
-                st.error("🚫 CHEMISTRY ERROR: AUTHENTICATION FAILED. (Wrong key or tampered message)")
+                st.error("🚫 CHEMISTRY ERROR: AUTHENTICATION FAILED.")
             else:
                 prev_for_dec = int.from_bytes(hashlib.sha256(b"init_vector").digest()[:1], 'big')
                 decoded_payload = []
@@ -224,7 +225,8 @@ if kw and (kiss_btn or tell_btn):
                     decoded_payload.append(original_byte)
                     prev_for_dec = current_cipher
                 
-                decoded_msg = bytes(decoded_payload[4:]).decode('utf-8')
+                # Strip the 12-byte nonce
+                decoded_msg = bytes(decoded_payload[NONCE_SIZE:]).decode('utf-8')
                 output_placeholder.markdown(f'<div class="whisper-text">Cypher Whispers: {decoded_msg}</div>', unsafe_allow_html=True)
         except Exception:
             st.error("Chemistry Error! Corrupted emojis or incorrect key.")
