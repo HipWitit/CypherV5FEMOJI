@@ -3,7 +3,7 @@ import re
 import os
 import secrets
 import hashlib
-import struct  # For binary packing of parameters
+import struct
 import streamlit.components.v1 as components
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 from argon2.low_level import hash_secret_raw, Type
@@ -11,13 +11,13 @@ from argon2.low_level import hash_secret_raw, Type
 # --- 1. CONFIG & CONSTANTS ---
 st.set_page_config(page_title="Cyfer Pro", layout="centered")
 
-VERSION_BYTE = b'\x02' # Upgraded to Version 2 to support dynamic params
+VERSION_BYTE = b'\x02' 
 SALT_SIZE = 16
 NONCE_SIZE = 12 
 
-# Default Sacred Parameters
+# Default Parameters
 T_COST = 3
-M_COST = 65536 # 64MB
+M_COST = 65536 
 P_FACTOR = 4
 
 @st.cache_data
@@ -46,31 +46,69 @@ st.markdown(f"""
     .stApp {{ background-color: #DBDCFF !important; }}
     .main .block-container {{ padding-bottom: 150px !important; }}
     div[data-testid="stWidgetLabel"], label {{ display: none !important; }}
-    .stTextInput > div > div > input, .stTextArea > div > div > textarea,
+
+    .stTextInput > div > div > input, 
+    .stTextArea > div > div > textarea,
     input::placeholder, textarea::placeholder {{
-        background-color: #FEE2E9 !important; color: #B4A7D6 !important; 
-        border: 2px solid #B4A7D6 !important; font-family: "Courier New", Courier, monospace !important;
-        font-size: 18px !important; font-weight: bold !important;
+        background-color: #FEE2E9 !important;
+        color: #B4A7D6 !important; 
+        border: 2px solid #B4A7D6 !important;
+        font-family: "Courier New", Courier, monospace !important;
+        font-size: 18px !important;
+        font-weight: bold !important;
     }}
-    .stProgress > div > div > div > div {{ background-color: #B4A7D6 !important; }}
+
+    .stProgress > div > div > div > div {{ 
+        background-color: #B4A7D6 !important; 
+        box-shadow: 0px 0px 10px rgba(180, 167, 214, 0.5);
+    }}
+
+    [data-testid="column"], [data-testid="stVerticalBlock"] > div {{ width: 100% !important; flex: 1 1 100% !important; }}
+    .stButton, .stButton > button {{ width: 100% !important; display: block !important; }}
+
     div.stButton > button {{
-        background-color: #B4A7D6 !important; color: #FFD4E5 !important;
-        border-radius: 15px !important; min-height: 100px !important; 
-        border: none !important; text-transform: uppercase;
+        background-color: #B4A7D6 !important; 
+        color: #FFD4E5 !important;
+        border-radius: 15px !important;
+        min-height: 100px !important; 
+        border: none !important;
+        text-transform: uppercase;
+        box-shadow: 0px 4px 12px rgba(0,0,0,0.15);
         margin-top: 15px !important;
     }}
-    div.stButton > button p {{ font-size: 38px !important; font-weight: 800 !important; }}
+
+    div.stButton > button p {{
+        font-size: 38px !important; 
+        font-weight: 800 !important;
+        line-height: 1.1 !important;
+        margin: 0 !important;
+        text-align: center !important;
+    }}
+
+    div[data-testid="stVerticalBlock"] > div:last-child .stButton > button {{
+        min-height: 70px !important;
+        background-color: #D1C4E9 !important;
+        border: none !important;
+    }}
+
     .result-box {{
         background-color: #FEE2E9; color: #B4A7D6; padding: 15px;
-        border-radius: 10px; border: 2px solid #B4A7D6; word-wrap: break-word;
-        text-align: center; font-size: 24px; font-weight: bold; margin-top: 15px;
+        border-radius: 10px; font-family: "Courier New", monospace !important;
+        border: 2px solid #B4A7D6; word-wrap: break-word;
+        margin-top: 15px; font-weight: bold; text-align: center; font-size: 24px;
     }}
+
     .whisper-text {{
         color: #B4A7D6; font-family: "Courier New", monospace !important;
-        font-weight: bold; font-size: 26px; border-top: 2px dashed #B4A7D6;
-        padding-top: 15px; text-align: center; margin-top: 20px;
+        font-weight: bold; font-size: 26px; margin-top: 20px;
+        border-top: 2px dashed #B4A7D6; padding-top: 15px; text-align: center;
     }}
-    .footer-text {{ color: #B4A7D6; font-size: 22px; font-weight: bold; text-align: center; margin-top: 15px; }}
+
+    .footer-text {{
+        color: #B4A7D6; font-family: "Courier New", Courier, monospace;
+        font-size: 22px; font-weight: bold; margin-top: 15px;
+        letter-spacing: 2px; text-align: center;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -92,18 +130,27 @@ def clear_everything():
     for k in ["lips", "chem", "hint"]:
         if k in st.session_state: st.session_state[k] = ""
 
-# --- 4. UI ---
+# --- 4. UI ELEMENTS ---
 if os.path.exists("CYPHER.png"): st.image("CYPHER.png")
+if os.path.exists("Lock Lips.png"): st.image("Lock Lips.png")
+
 kw = st.text_input("Key", type="password", key="lips", placeholder="SECRET KEY").strip()
 chem_lvl = calculate_chemistry(kw)
+st.write(f"🧪 **CHEMISTRY LEVEL:** {int(chem_lvl*100)}%")
 st.progress(chem_lvl)
 
 hint_text = st.text_input("Hint", key="hint", placeholder="KEY HINT (Optional)")
+if os.path.exists("Kiss Chemistry.png"): st.image("Kiss Chemistry.png")
 user_input = st.text_area("Message", height=120, key="chem", placeholder="YOUR MESSAGE")
 
 output_placeholder = st.empty()
 kiss_btn, tell_btn = st.button("KISS"), st.button("TELL")
 st.button("DESTROY CHEMISTRY", on_click=clear_everything)
+
+if os.path.exists("LPB.png"):
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2: st.image("LPB.png")
+
 st.markdown('<div class="footer-text">CREATED BY</div>', unsafe_allow_html=True)
 
 # --- 5. THE CHEMISTRY PROCESS ---
@@ -118,8 +165,7 @@ if kw and (kiss_btn or tell_btn):
                 aead = ChaCha20Poly1305(key)
                 ciphertext = aead.encrypt(nonce, user_input.encode(), None)
             
-            # Pack Params: Version(1) + T(1) + M(4) + P(1)
-            # Binary structure for efficiency before emoji conversion
+            # HEADER: Version(1) + T(1) + M(4) + P(1)
             header = VERSION_BYTE + struct.pack(">BIB", T_COST, M_COST, P_FACTOR)
             final_payload = header + salt + nonce + ciphertext
             output = "".join(to_emoji(b) for b in final_payload)
@@ -133,19 +179,13 @@ if kw and (kiss_btn or tell_btn):
             version = data[0:1]
             
             if version == b'\x01':
-                # Compatibility with legacy Version 1
                 t, m, p = 3, 65536, 4
-                salt = data[1:17]
-                nonce = data[17:29]
-                ciphertext = data[29:]
+                salt, nonce, ciphertext = data[1:17], data[17:29], data[29:]
             elif version == b'\x02':
-                # Extract params: T is byte 1, M is bytes 2-5, P is byte 6
                 t, m, p = struct.unpack(">BIB", data[1:7])
-                salt = data[7:23]
-                nonce = data[23:35]
-                ciphertext = data[35:]
+                salt, nonce, ciphertext = data[7:23], data[23:35], data[35:]
             else:
-                st.error("⚠️ UNKNOWN CHEMISTRY VERSION")
+                st.error("⚠️ UNKNOWN VERSION")
                 st.stop()
                 
             with st.spinner("Extracting Secret..."):
