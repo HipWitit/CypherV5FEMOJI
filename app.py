@@ -60,7 +60,7 @@ st.markdown(f"""
     .result-box {{
         background-color: #FEE2E9; color: #B4A7D6; padding: 15px;
         border-radius: 10px; border: 2px solid #B4A7D6; word-wrap: break-word;
-        text-align: center; font-size: 24px; font-weight: bold;
+        text-align: center; font-size: 24px; font-weight: bold; margin-top: 15px;
     }}
     .whisper-text {{
         color: #B4A7D6; font-family: "Courier New", monospace !important;
@@ -72,22 +72,28 @@ st.markdown(f"""
     """, unsafe_allow_html=True)
 
 # --- 3. ENGINE LOGIC (Argon2id KDF) ---
-def get_argon2_key(kw):
+def get_aead_key(kw):
+    # Salt must be exactly 16 bytes for Argon2
+    # We derive a deterministic salt from the PEPPER
+    salt = hashlib.sha256(PEPPER).digest()[:16]
+    
     # Argon2id parameters: memory_cost (64MB), time_cost (3 rounds), parallelism (4 threads)
     kdf = Argon2(
         memory_cost=65536,
         time_cost=3,
         parallelism=4,
         length=32,
-        salt=hashlib.sha256(PEPPER).digest()[:16] # Deterministic salt for app stability
+        salt=salt
     )
     return kdf.derive(kw.encode())
 
 def calculate_chemistry(password):
     if not password: return 0.0
     score = min(len(password) / 16, 1.0) * 0.4
-    for pattern in [r"[a-z]", r"[A-Z]", r"[0-9]", r"[ !@#$%^&*(),.?\":{}|<>]"]:
-        if re.search(pattern, password): score += 0.15
+    if any(c.islower() for c in password): score += 0.15
+    if any(c.isupper() for c in password): score += 0.15
+    if any(c.isdigit() for c in password): score += 0.15
+    if any(re.search(r"[ !@#$%^&*(),.?\":{}|<>]", c) for c in password): score += 0.15
     return min(score, 1.0)
 
 def clear_everything():
@@ -101,7 +107,6 @@ st.progress(calculate_chemistry(kw))
 hint_text = st.text_input("Hint", key="hint", placeholder="KEY HINT (Optional)")
 user_input = st.text_area("Message", height=120, key="chem", placeholder="YOUR MESSAGE")
 
-output_placeholder = st.empty()
 kiss_btn, tell_btn = st.button("KISS"), st.button("TELL")
 st.button("DESTROY CHEMISTRY", on_click=clear_everything)
 
@@ -110,9 +115,9 @@ st.markdown('<div class="footer-text">CREATED BY</div>', unsafe_allow_html=True)
 # --- 5. PROCESSING ---
 if kw and (kiss_btn or tell_btn):
     try:
-        # Argon2id is computationally heavy; Streamlit will show a spinner automatically
+        # Argon2id is heavy; we show a spinner to acknowledge the computation
         with st.spinner("Refining Chemistry..."):
-            key = get_argon2_key(kw)
+            key = get_aead_key(kw)
         chacha = ChaCha20Poly1305(key)
         
         if kiss_btn:
@@ -128,7 +133,7 @@ if kw and (kiss_btn or tell_btn):
             byte_data = bytes(from_emoji_string(user_input.strip()))
             nonce, ciphertext = byte_data[:NONCE_SIZE], byte_data[NONCE_SIZE:]
             decrypted_msg = chacha.decrypt(nonce, ciphertext, None).decode('utf-8')
-            output_placeholder.markdown(f'<div class="whisper-text">Cypher Whispers: {decrypted_msg}</div>', unsafe_allow_html=True)
+            st.write(f'<div class="whisper-text">Cypher Whispers: {decrypted_msg}</div>', unsafe_allow_html=True)
             
     except Exception:
         st.error("🚫 CHEMISTRY ERROR: AUTHENTICATION FAILED.")
