@@ -15,7 +15,6 @@ VERSION_BYTE = b'\x02'
 SALT_SIZE = 16
 NONCE_SIZE = 12 
 
-# Sacred Parameters
 T_COST = 3
 M_COST = 65536 
 P_FACTOR = 4
@@ -63,6 +62,31 @@ st.markdown(f"""
         box-shadow: 0px 0px 10px rgba(180, 167, 214, 0.5);
     }}
 
+    /* Floating Info Orb - Placed exactly where the purple dot was */
+    div.stButton > button[key="info_orb"] {{
+        position: fixed;
+        top: 100px; /* Adjusting to match the upper-right dot position */
+        right: 20px;
+        width: 45px !important;
+        height: 45px !important;
+        min-height: 45px !important;
+        border-radius: 50% !important;
+        background-color: #B4A7D6 !important;
+        color: #FFD4E5 !important;
+        border: 2px solid #FEE2E9 !important;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 !important;
+    }}
+    
+    div.stButton > button[key="info_orb"] p {{
+        font-size: 14px !important;
+        font-weight: bold !important;
+        margin: 0 !important;
+    }}
+
     [data-testid="column"], [data-testid="stVerticalBlock"] > div {{ width: 100% !important; flex: 1 1 100% !important; }}
     .stButton, .stButton > button {{ width: 100% !important; display: block !important; }}
 
@@ -81,43 +105,12 @@ st.markdown(f"""
         font-size: 38px !important; 
         font-weight: 800 !important;
         line-height: 1.1 !important;
-        margin: 0 !important;
         text-align: center !important;
-    }}
-
-    /* Specific Styling for the Info Orb */
-    div.stButton > button[key="info_orb"] {{
-        position: fixed;
-        bottom: 30px;
-        right: 30px;
-        width: 80px !important;
-        height: 80px !important;
-        min-height: 80px !important;
-        border-radius: 50% !important;
-        background-color: #B4A7D6 !important;
-        color: #FFD4E5 !important;
-        border: 3px solid #FEE2E9 !important;
-        box-shadow: 0px 4px 15px rgba(180, 167, 214, 0.4);
-        z-index: 1000;
-        transition: all 0.3s ease;
-    }}
-    
-    div.stButton > button[key="info_orb"]:hover {{
-        transform: scale(1.1);
-        background-color: #D1C4E9 !important;
-    }}
-
-    div.stButton > button[key="info_orb"] p {{
-        font-family: "Courier New", monospace !important;
-        font-size: 18px !important;
-        font-weight: bold !important;
-        line-height: 1.2 !important;
     }}
 
     div[data-testid="stVerticalBlock"] > div:last-child .stButton > button {{
         min-height: 70px !important;
         background-color: #D1C4E9 !important;
-        border: none !important;
     }}
 
     .result-box {{
@@ -179,7 +172,7 @@ def clear_everything():
         if k in st.session_state: st.session_state[k] = ""
 
 # --- 4. UI ELEMENTS ---
-# Floating Info Orb
+# Small circular info button
 st.button("Info", key="info_orb", on_click=show_help)
 
 if os.path.exists("CYPHER.png"): st.image("CYPHER.png")
@@ -251,3 +244,4 @@ if kw and (kiss_btn or tell_btn):
             
     except Exception:
         st.error("🚫 CHEMISTRY ERROR: AUTHENTICATION FAILED. Check Key and Hint.")
+
