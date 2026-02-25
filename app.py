@@ -10,6 +10,7 @@ from argon2.low_level import hash_secret_raw, Type
 # --- 1. CONFIG & CONSTANTS ---
 st.set_page_config(page_title="Cyfer Pro", layout="centered")
 
+VERSION_BYTE = b'\x01' # Current version: 1
 SALT_SIZE = 16
 NONCE_SIZE = 12 
 
@@ -155,7 +156,6 @@ st.markdown('<div class="footer-text">CREATED BY</div>', unsafe_allow_html=True)
 if kw and (kiss_btn or tell_btn):
     try:
         if kiss_btn:
-            # Generate unique salt and nonce
             salt = secrets.token_bytes(SALT_SIZE)
             nonce = secrets.token_bytes(NONCE_SIZE)
             
@@ -164,8 +164,8 @@ if kw and (kiss_btn or tell_btn):
                 aead = ChaCha20Poly1305(key)
                 ciphertext = aead.encrypt(nonce, user_input.encode(), None)
             
-            # STRUCTURE: SALT (16) + NONCE (12) + CIPHERTEXT
-            final_payload = salt + nonce + ciphertext
+            # THE PAYLOAD: Version (1) + Salt (16) + Nonce (12) + Ciphertext
+            final_payload = VERSION_BYTE + salt + nonce + ciphertext
             output = "".join(to_emoji(b) for b in final_payload)
             
             with output_placeholder.container():
@@ -174,13 +174,20 @@ if kw and (kiss_btn or tell_btn):
 
         if tell_btn:
             data = bytes(from_emoji_string(user_input.strip()))
-            if len(data) < (SALT_SIZE + NONCE_SIZE + 16): 
+            
+            # Check for minimum length: Version(1) + Salt(16) + Nonce(12) + Tag(16)
+            if len(data) < (1 + SALT_SIZE + NONCE_SIZE + 16): 
                 raise ValueError("Payload too short")
             
-            # UNPACKING THE SACRED STRUCTURE
-            salt = data[:SALT_SIZE]
-            nonce = data[SALT_SIZE:SALT_SIZE + NONCE_SIZE]
-            ciphertext = data[SALT_SIZE + NONCE_SIZE:]
+            # UNPACKING
+            version = data[0:1]
+            if version != b'\x01':
+                st.error("⚠️ UNKNOWN VERSION: This message was created with a different chemistry.")
+                st.stop()
+                
+            salt = data[1:1 + SALT_SIZE]
+            nonce = data[1 + SALT_SIZE : 1 + SALT_SIZE + NONCE_SIZE]
+            ciphertext = data[1 + SALT_SIZE + NONCE_SIZE:]
             
             with st.spinner("Refining Chemistry..."):
                 key = get_derived_key(kw, salt)
