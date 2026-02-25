@@ -43,8 +43,41 @@ def from_emoji_string(s):
 st.markdown(f"""
     <style>
     .stApp {{ background-color: #DBDCFF !important; }}
-    .main .block-container {{ padding-bottom: 150px !important; }}
+    .main .block-container {{ padding-bottom: 150px !important; position: relative; }}
     div[data-testid="stWidgetLabel"], label {{ display: none !important; }}
+
+    /* GLOW ANIMATION */
+    @keyframes pulse-glow {{
+        0% {{ box-shadow: 0 0 5px #B4A7D6, 0 0 10px #B4A7D6; }}
+        50% {{ box-shadow: 0 0 15px #FFD4E5, 0 0 25px #B4A7D6; }}
+        100% {{ box-shadow: 0 0 5px #B4A7D6, 0 0 10px #B4A7D6; }}
+    }}
+
+    /* SMALL CIRCULAR INFO ORB - Positioned precisely */
+    div.stButton > button[key="info_orb"] {{
+        position: absolute;
+        top: -65px; /* Pulls it up into the space above the progress bar */
+        right: 15px;
+        width: 40px !important;
+        height: 40px !important;
+        min-height: 40px !important;
+        border-radius: 50% !important;
+        background-color: #B4A7D6 !important;
+        color: #FFD4E5 !important;
+        border: 2px solid #FEE2E9 !important;
+        z-index: 99;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 !important;
+        animation: pulse-glow 3s infinite ease-in-out;
+    }}
+    
+    div.stButton > button[key="info_orb"] p {{
+        font-size: 10px !important;
+        font-weight: bold !important;
+        margin: 0 !important;
+    }}
 
     .stTextInput > div > div > input, 
     .stTextArea > div > div > textarea,
@@ -60,31 +93,6 @@ st.markdown(f"""
     .stProgress > div > div > div > div {{ 
         background-color: #B4A7D6 !important; 
         box-shadow: 0px 0px 10px rgba(180, 167, 214, 0.5);
-    }}
-
-    /* Floating Info Orb - Placed exactly where the purple dot was */
-    div.stButton > button[key="info_orb"] {{
-        position: fixed;
-        top: 100px; /* Adjusting to match the upper-right dot position */
-        right: 20px;
-        width: 45px !important;
-        height: 45px !important;
-        min-height: 45px !important;
-        border-radius: 50% !important;
-        background-color: #B4A7D6 !important;
-        color: #FFD4E5 !important;
-        border: 2px solid #FEE2E9 !important;
-        z-index: 1000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0 !important;
-    }}
-    
-    div.stButton > button[key="info_orb"] p {{
-        font-size: 14px !important;
-        font-weight: bold !important;
-        margin: 0 !important;
     }}
 
     [data-testid="column"], [data-testid="stVerticalBlock"] > div {{ width: 100% !important; flex: 1 1 100% !important; }}
@@ -172,16 +180,19 @@ def clear_everything():
         if k in st.session_state: st.session_state[k] = ""
 
 # --- 4. UI ELEMENTS ---
-# Small circular info button
-st.button("Info", key="info_orb", on_click=show_help)
-
 if os.path.exists("CYPHER.png"): st.image("CYPHER.png")
 if os.path.exists("Lock Lips.png"): st.image("Lock Lips.png")
 
 kw = st.text_input("Key", type="password", key="lips", placeholder="SECRET KEY").strip()
 chem_lvl = calculate_chemistry(kw)
 st.write(f"🧪 **CHEMISTRY LEVEL:** {int(chem_lvl*100)}%")
-st.progress(chem_lvl)
+
+# Place Orb and Progress Bar together for anchoring
+orb_col, prog_col = st.columns([1, 20])
+with orb_col:
+    st.button("Info", key="info_orb", on_click=show_help)
+with prog_col:
+    st.progress(chem_lvl)
 
 hint_text = st.text_input("Hint", key="hint", placeholder="KEY HINT (Optional)")
 if os.path.exists("Kiss Chemistry.png"): st.image("Kiss Chemistry.png")
@@ -244,4 +255,3 @@ if kw and (kiss_btn or tell_btn):
             
     except Exception:
         st.error("🚫 CHEMISTRY ERROR: AUTHENTICATION FAILED. Check Key and Hint.")
-
