@@ -21,7 +21,6 @@ ROUNDS = 3
 @st.cache_data
 def get_stable_emoji_list():
     base_list = []
-    # Using the most stable blocks: Misc Symbols, Activity, and Smiles
     ranges = [(0x1F300, 0x1F3F0), (0x1F400, 0x1F4FF), (0x1F600, 0x1F64F)]
     for start, end in ranges:
         for codepoint in range(start, end):
@@ -36,11 +35,10 @@ def to_emoji(val):
     return STABLE_EMOJIS[val % 256]
 
 def from_emoji_string(s):
-    # Regex ensures we grab full multi-byte emojis correctly
     emojis = re.findall(r'.', s, re.UNICODE)
     return [EMOJI_TO_BYTE[char] for char in emojis if char in EMOJI_TO_BYTE]
 
-# --- 2. THE CSS (Photo Colors) ---
+# --- 2. CSS STYLING ---
 st.markdown(f"""
     <style>
     .stApp {{ background-color: #DBDCFF !important; }}
@@ -112,7 +110,7 @@ st.markdown(f"""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. ENGINE (Affine Coprimality Logic) ---
+# --- 3. ENGINE LOGIC ---
 def calculate_chemistry(password):
     if not password: return 0.0
     score = 0
@@ -129,7 +127,6 @@ def get_keys_and_perms(kw):
     rounds_params = []
     for i in range(ROUNDS):
         h = hashlib.sha256(master_key + i.to_bytes(4, 'big')).digest()
-        # Ensure 'a' is always odd to satisfy gcd(a, 256) = 1
         a = (int.from_bytes(h[:4], 'big') % 127) * 2 + 1 
         b = int.from_bytes(h[4:8], 'big') % 256
         p_list = list(range(256))
@@ -144,7 +141,7 @@ def clear_everything():
     for k in ["lips", "chem", "hint"]:
         if k in st.session_state: st.session_state[k] = ""
 
-# --- 4. UI LAYOUT ---
+# --- 4. UI ---
 if os.path.exists("CYPHER.png"): st.image("CYPHER.png")
 if os.path.exists("Lock Lips.png"): st.image("Lock Lips.png")
 
@@ -167,17 +164,20 @@ if os.path.exists("LPB.png"):
 
 st.markdown('<div class="footer-text">CREATED BY</div>', unsafe_allow_html=True)
 
-# --- 5. PROCESSING ---
+# --- 5. PROCESSING (Robust Nonce Implementation) ---
 if kw and (kiss_btn or tell_btn):
     params = get_keys_and_perms(kw)
     
     if kiss_btn:
-        data = user_input.encode('utf-8')
+        # Prepend 4 bytes of nonce directly to the raw data
         nonce_bytes = [secrets.randbelow(256) for _ in range(4)]
-        prev = int.from_bytes(hashlib.sha256(bytes(nonce_bytes)).digest()[:1], 'big')
+        raw_payload = bytes(nonce_bytes) + user_input.encode('utf-8')
         
-        res_emojis = [to_emoji(b) for b in nonce_bytes]
-        for byte in data:
+        # Initial 'prev' vector derived from a fixed hash to start the chain
+        prev = int.from_bytes(hashlib.sha256(b"init_vector").digest()[:1], 'big')
+        
+        res_emojis = []
+        for byte in raw_payload:
             current = byte ^ prev
             for r in range(ROUNDS):
                 current = params[r]['p'][current]
@@ -195,24 +195,22 @@ if kw and (kiss_btn or tell_btn):
             byte_values = from_emoji_string(user_input.strip())
             if len(byte_values) < 5: raise ValueError()
             
-            nonce_bytes = byte_values[:4]
-            ciphertext_payload = byte_values[4:]
-            prev = int.from_bytes(hashlib.sha256(bytes(nonce_bytes)).digest()[:1], 'big')
+            prev_for_dec = int.from_bytes(hashlib.sha256(b"init_vector").digest()[:1], 'big')
+            decoded_payload = []
             
-            decoded_bytes = []
-            for current_cipher in ciphertext_payload:
+            for current_cipher in byte_values:
                 temp = current_cipher
                 for r in reversed(range(ROUNDS)):
-                    # Modular inverse of 'a' mod 256
                     a_inv = pow(params[r]['a'], -1, 256)
                     temp = (a_inv * (temp - params[r]['b'])) % 256
                     temp = params[r]['inv_p'][temp]
                 
-                original_byte = temp ^ prev
-                decoded_bytes.append(original_byte)
-                prev = current_cipher
+                original_byte = temp ^ prev_for_dec
+                decoded_payload.append(original_byte)
+                prev_for_dec = current_cipher
             
-            decoded_msg = bytes(decoded_bytes).decode('utf-8')
+            # The first 4 bytes are the nonce, we skip them for the final message
+            decoded_msg = bytes(decoded_payload[4:]).decode('utf-8')
             output_placeholder.markdown(f'<div class="whisper-text">Cypher Whispers: {decoded_msg}</div>', unsafe_allow_html=True)
         except Exception:
             st.error("Chemistry Error! Corrupted emojis or wrong key.")
