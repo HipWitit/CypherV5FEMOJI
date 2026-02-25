@@ -18,13 +18,10 @@ PEPPER = str(raw_pepper).encode()
 U_MOD = 256 
 ROUNDS = 3
 
-# --- 2. THE STABLE EMOJI MAP ---
-# We use a curated list of 256 stable emojis to avoid Unicode gaps.
 @st.cache_data
 def get_stable_emoji_list():
-    # Curating a set of 256 diverse, high-compatibility emojis
-    # Starting with Miscellaneous Symbols and moving through reliable blocks
     base_list = []
+    # Using the most stable blocks: Misc Symbols, Activity, and Smiles
     ranges = [(0x1F300, 0x1F3F0), (0x1F400, 0x1F4FF), (0x1F600, 0x1F64F)]
     for start, end in ranges:
         for codepoint in range(start, end):
@@ -39,11 +36,11 @@ def to_emoji(val):
     return STABLE_EMOJIS[val % 256]
 
 def from_emoji_string(s):
-    # This regex extracts each individual emoji safely
+    # Regex ensures we grab full multi-byte emojis correctly
     emojis = re.findall(r'.', s, re.UNICODE)
     return [EMOJI_TO_BYTE[char] for char in emojis if char in EMOJI_TO_BYTE]
 
-# --- 3. STYLING ---
+# --- 2. THE CSS (Photo Colors) ---
 st.markdown(f"""
     <style>
     .stApp {{ background-color: #DBDCFF !important; }}
@@ -115,7 +112,7 @@ st.markdown(f"""
     </style>
     """, unsafe_allow_html=True)
 
-# --- ENGINE & UTILS ---
+# --- 3. ENGINE (Affine Coprimality Logic) ---
 def calculate_chemistry(password):
     if not password: return 0.0
     score = 0
@@ -127,12 +124,13 @@ def calculate_chemistry(password):
     return min(score, 1.0)
 
 def get_keys_and_perms(kw):
-    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=64, salt=b"dense_v4_stable", iterations=100000, backend=default_backend())
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=64, salt=b"affine_v5_stable", iterations=100000, backend=default_backend())
     master_key = kdf.derive(kw.encode() + PEPPER)
     rounds_params = []
     for i in range(ROUNDS):
         h = hashlib.sha256(master_key + i.to_bytes(4, 'big')).digest()
-        a = (int.from_bytes(h[:4], 'big') % 120) * 2 + 1 
+        # Ensure 'a' is always odd to satisfy gcd(a, 256) = 1
+        a = (int.from_bytes(h[:4], 'big') % 127) * 2 + 1 
         b = int.from_bytes(h[4:8], 'big') % 256
         p_list = list(range(256))
         seed = int.from_bytes(h[8:16], 'big')
@@ -146,7 +144,7 @@ def clear_everything():
     for k in ["lips", "chem", "hint"]:
         if k in st.session_state: st.session_state[k] = ""
 
-# --- UI LAYOUT ---
+# --- 4. UI LAYOUT ---
 if os.path.exists("CYPHER.png"): st.image("CYPHER.png")
 if os.path.exists("Lock Lips.png"): st.image("Lock Lips.png")
 
@@ -169,7 +167,7 @@ if os.path.exists("LPB.png"):
 
 st.markdown('<div class="footer-text">CREATED BY</div>', unsafe_allow_html=True)
 
-# --- PROCESSING ---
+# --- 5. PROCESSING ---
 if kw and (kiss_btn or tell_btn):
     params = get_keys_and_perms(kw)
     
@@ -205,6 +203,7 @@ if kw and (kiss_btn or tell_btn):
             for current_cipher in ciphertext_payload:
                 temp = current_cipher
                 for r in reversed(range(ROUNDS)):
+                    # Modular inverse of 'a' mod 256
                     a_inv = pow(params[r]['a'], -1, 256)
                     temp = (a_inv * (temp - params[r]['b'])) % 256
                     temp = params[r]['inv_p'][temp]
@@ -215,5 +214,5 @@ if kw and (kiss_btn or tell_btn):
             
             decoded_msg = bytes(decoded_bytes).decode('utf-8')
             output_placeholder.markdown(f'<div class="whisper-text">Cypher Whispers: {decoded_msg}</div>', unsafe_allow_html=True)
-        except:
-            st.error("Chemistry Error! Corrupted emoji string or wrong key.")
+        except Exception:
+            st.error("Chemistry Error! Corrupted emojis or wrong key.")
