@@ -4,6 +4,7 @@ import os
 import random
 import secrets
 import hashlib
+import hmac
 import base64
 import streamlit.components.v1 as components
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -11,7 +12,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 
 # --- 1. CONFIG & STYLING ---
-st.set_page_config(page_title="Cyfer Pro: Secret Language", layout="centered")
+st.set_page_config(page_title="Cyfer Pro: Authenticated", layout="centered")
 
 raw_pepper = st.secrets.get("MY_SECRET_PEPPER") or "default_fallback_spice_2026"
 PEPPER = str(raw_pepper).encode()
@@ -38,7 +39,7 @@ def from_emoji_string(s):
     emojis = re.findall(r'.', s, re.UNICODE)
     return [EMOJI_TO_BYTE[char] for char in emojis if char in EMOJI_TO_BYTE]
 
-# --- 2. CSS STYLING ---
+# --- 2. THE CSS (Sacred Purple & Pink) ---
 st.markdown(f"""
     <style>
     .stApp {{ background-color: #DBDCFF !important; }}
@@ -61,9 +62,6 @@ st.markdown(f"""
         box-shadow: 0px 0px 10px rgba(180, 167, 214, 0.5);
     }}
 
-    [data-testid="column"], [data-testid="stVerticalBlock"] > div {{ width: 100% !important; flex: 1 1 100% !important; }}
-    .stButton, .stButton > button {{ width: 100% !important; display: block !important; }}
-
     div.stButton > button {{
         background-color: #B4A7D6 !important; 
         color: #FFD4E5 !important;
@@ -75,19 +73,7 @@ st.markdown(f"""
         margin-top: 15px !important;
     }}
 
-    div.stButton > button p {{
-        font-size: 38px !important; 
-        font-weight: 800 !important;
-        line-height: 1.1 !important;
-        margin: 0 !important;
-        text-align: center !important;
-    }}
-
-    div[data-testid="stVerticalBlock"] > div:last-child .stButton > button {{
-        min-height: 70px !important;
-        background-color: #D1C4E9 !important;
-        border: none !important;
-    }}
+    div.stButton > button p {{ font-size: 38px !important; font-weight: 800 !important; }}
 
     .result-box {{
         background-color: #FEE2E9; color: #B4A7D6; padding: 15px;
@@ -110,11 +96,10 @@ st.markdown(f"""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. ENGINE LOGIC ---
+# --- 3. ENGINE LOGIC (Master Key Splitting) ---
 def calculate_chemistry(password):
     if not password: return 0.0
-    score = 0
-    score += min(len(password) / 16, 1.0) * 0.4
+    score = min(len(password) / 16, 1.0) * 0.4
     if any(c.islower() for c in password): score += 0.15
     if any(c.isupper() for c in password): score += 0.15
     if any(c.isdigit() for c in password): score += 0.15
@@ -122,20 +107,25 @@ def calculate_chemistry(password):
     return min(score, 1.0)
 
 def get_keys_and_perms(kw):
-    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=64, salt=b"affine_v5_stable", iterations=100000, backend=default_backend())
+    # Derive 64 bytes: 32 for Encryption, 32 for Authentication
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=64, salt=b"sacred_mac_v1", iterations=100000, backend=default_backend())
     master_key = kdf.derive(kw.encode() + PEPPER)
+    
+    enc_key = master_key[:32]
+    auth_key = master_key[32:]
+    
     rounds_params = []
     for i in range(ROUNDS):
-        h = hashlib.sha256(master_key + i.to_bytes(4, 'big')).digest()
+        h = hashlib.sha256(enc_key + i.to_bytes(4, 'big')).digest()
         a = (int.from_bytes(h[:4], 'big') % 127) * 2 + 1 
         b = int.from_bytes(h[4:8], 'big') % 256
         p_list = list(range(256))
         seed = int.from_bytes(h[8:16], 'big')
-        import random
         r = random.Random(seed)
         r.shuffle(p_list)
         rounds_params.append({'a': a, 'b': b, 'p': p_list, 'inv_p': [p_list.index(j) for j in range(256)]})
-    return rounds_params
+    
+    return rounds_params, auth_key
 
 def clear_everything():
     for k in ["lips", "chem", "hint"]:
@@ -143,49 +133,45 @@ def clear_everything():
 
 # --- 4. UI ---
 if os.path.exists("CYPHER.png"): st.image("CYPHER.png")
-if os.path.exists("Lock Lips.png"): st.image("Lock Lips.png")
-
 kw = st.text_input("Key", type="password", key="lips", placeholder="SECRET KEY").strip()
 chem_lvl = calculate_chemistry(kw)
 st.write(f"🧪 **CHEMISTRY LEVEL:** {int(chem_lvl*100)}%")
 st.progress(chem_lvl)
 
 hint_text = st.text_input("Hint", key="hint", placeholder="KEY HINT (Optional)")
-if os.path.exists("Kiss Chemistry.png"): st.image("Kiss Chemistry.png")
 user_input = st.text_area("Message", height=120, key="chem", placeholder="YOUR MESSAGE")
 
 output_placeholder = st.empty()
 kiss_btn, tell_btn = st.button("KISS"), st.button("TELL")
 st.button("DESTROY CHEMISTRY", on_click=clear_everything)
 
-if os.path.exists("LPB.png"):
-    c1, c2, c3 = st.columns([1, 2, 1])
-    with c2: st.image("LPB.png")
-
 st.markdown('<div class="footer-text">CREATED BY</div>', unsafe_allow_html=True)
 
-# --- 5. PROCESSING (Robust Nonce Implementation) ---
+# --- 5. PROCESSING (Encrypt-then-MAC) ---
 if kw and (kiss_btn or tell_btn):
-    params = get_keys_and_perms(kw)
+    params, auth_key = get_keys_and_perms(kw)
     
     if kiss_btn:
-        # Prepend 4 bytes of nonce directly to the raw data
         nonce_bytes = [secrets.randbelow(256) for _ in range(4)]
         raw_payload = bytes(nonce_bytes) + user_input.encode('utf-8')
         
-        # Initial 'prev' vector derived from a fixed hash to start the chain
         prev = int.from_bytes(hashlib.sha256(b"init_vector").digest()[:1], 'big')
+        ciphertext_bytes = []
         
-        res_emojis = []
         for byte in raw_payload:
             current = byte ^ prev
             for r in range(ROUNDS):
                 current = params[r]['p'][current]
                 current = (params[r]['a'] * current + params[r]['b']) % 256
-            res_emojis.append(to_emoji(current))
+            ciphertext_bytes.append(current)
             prev = current
         
-        final_output = "".join(res_emojis)
+        # --- AUTHENTICATION TAG ---
+        cipher_bytes = bytes(ciphertext_bytes)
+        mac = hmac.new(auth_key, cipher_bytes, hashlib.sha256).digest()[:16]
+        final_payload = cipher_bytes + mac
+        
+        final_output = "".join(to_emoji(b) for b in final_payload)
         with output_placeholder.container():
             st.markdown(f'<div class="result-box">{final_output}</div>', unsafe_allow_html=True)
             components.html(f"""<button onclick="navigator.share({{title:'Secret',text:`{final_output}\\n\\nHint: {hint_text}`}})" style="background-color:#B4A7D6; color:#FFD4E5; font-weight:bold; border-radius:15px; min-height:80px; width:100%; cursor:pointer; font-size: 28px; border:none; text-transform:uppercase;">SHARE ✨</button>""", height=100)
@@ -193,24 +179,33 @@ if kw and (kiss_btn or tell_btn):
     if tell_btn:
         try:
             byte_values = from_emoji_string(user_input.strip())
-            if len(byte_values) < 5: raise ValueError()
+            if len(byte_values) < 21: # 4 nonce + 1 min msg + 16 HMAC
+                raise ValueError("Short payload")
             
-            prev_for_dec = int.from_bytes(hashlib.sha256(b"init_vector").digest()[:1], 'big')
-            decoded_payload = []
+            incoming_cipher = bytes(byte_values[:-16])
+            incoming_mac = bytes(byte_values[-16:])
             
-            for current_cipher in byte_values:
-                temp = current_cipher
-                for r in reversed(range(ROUNDS)):
-                    a_inv = pow(params[r]['a'], -1, 256)
-                    temp = (a_inv * (temp - params[r]['b'])) % 256
-                    temp = params[r]['inv_p'][temp]
+            # --- VERIFICATION ---
+            expected_mac = hmac.new(auth_key, incoming_cipher, hashlib.sha256).digest()[:16]
+            
+            if not hmac.compare_digest(incoming_mac, expected_mac):
+                st.error("🚫 CHEMISTRY ERROR: AUTHENTICATION FAILED. (Key is wrong or message was tampered with)")
+            else:
+                prev_for_dec = int.from_bytes(hashlib.sha256(b"init_vector").digest()[:1], 'big')
+                decoded_payload = []
                 
-                original_byte = temp ^ prev_for_dec
-                decoded_payload.append(original_byte)
-                prev_for_dec = current_cipher
-            
-            # The first 4 bytes are the nonce, we skip them for the final message
-            decoded_msg = bytes(decoded_payload[4:]).decode('utf-8')
-            output_placeholder.markdown(f'<div class="whisper-text">Cypher Whispers: {decoded_msg}</div>', unsafe_allow_html=True)
+                for current_cipher in incoming_cipher:
+                    temp = current_cipher
+                    for r in reversed(range(ROUNDS)):
+                        a_inv = pow(params[r]['a'], -1, 256)
+                        temp = (a_inv * (temp - params[r]['b'])) % 256
+                        temp = params[r]['inv_p'][temp]
+                    
+                    original_byte = temp ^ prev_for_dec
+                    decoded_payload.append(original_byte)
+                    prev_for_dec = current_cipher
+                
+                decoded_msg = bytes(decoded_payload[4:]).decode('utf-8')
+                output_placeholder.markdown(f'<div class="whisper-text">Cypher Whispers: {decoded_msg}</div>', unsafe_allow_html=True)
         except Exception:
-            st.error("Chemistry Error! Corrupted emojis or wrong key.")
+            st.error("Chemistry Error! Likely corrupted emojis or incorrect key.")
