@@ -46,37 +46,43 @@ st.markdown(f"""
     .main .block-container {{ padding-bottom: 150px !important; position: relative; }}
     div[data-testid="stWidgetLabel"], label {{ display: none !important; }}
 
-    /* GLOW ANIMATION */
+    /* GLOWING PULSE ANIMATION */
     @keyframes pulse-glow {{
-        0% {{ box-shadow: 0 0 5px #B4A7D6, 0 0 10px #B4A7D6; }}
-        50% {{ box-shadow: 0 0 15px #FFD4E5, 0 0 25px #B4A7D6; }}
-        100% {{ box-shadow: 0 0 5px #B4A7D6, 0 0 10px #B4A7D6; }}
+        0% {{ box-shadow: 0 0 5px #B4A7D6, 0 0 10px #B4A7D6; transform: scale(1); }}
+        50% {{ box-shadow: 0 0 15px #FFD4E5, 0 0 20px #B4A7D6; transform: scale(1.05); }}
+        100% {{ box-shadow: 0 0 5px #B4A7D6, 0 0 10px #B4A7D6; transform: scale(1); }}
     }}
 
-    /* SMALL CIRCULAR INFO ORB - Positioned precisely */
-    div.stButton > button[key="info_orb"] {{
-        position: absolute;
-        top: -65px; /* Pulls it up into the space above the progress bar */
-        right: 15px;
-        width: 40px !important;
-        height: 40px !important;
-        min-height: 40px !important;
+    /* THE PURPLE DOT (INFO BUTTON) */
+    /* We use !important on everything to stop Streamlit from stretching it */
+    button[key="info_orb"] {{
+        position: fixed !important;
+        top: 485px !important; /* Adjusted for mobile view positioning */
+        right: 35px !important;
+        width: 45px !important;
+        height: 45px !important;
+        min-width: 45px !important;
+        max-width: 45px !important;
+        min-height: 45px !important;
+        max-height: 45px !important;
         border-radius: 50% !important;
         background-color: #B4A7D6 !important;
         color: #FFD4E5 !important;
         border: 2px solid #FEE2E9 !important;
-        z-index: 99;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        z-index: 99999 !important;
         padding: 0 !important;
-        animation: pulse-glow 3s infinite ease-in-out;
+        line-height: 45px !important;
+        animation: pulse-glow 3s infinite ease-in-out !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }}
-    
-    div.stButton > button[key="info_orb"] p {{
+
+    button[key="info_orb"] p {{
         font-size: 10px !important;
-        font-weight: bold !important;
         margin: 0 !important;
+        padding: 0 !important;
+        font-weight: bold !important;
     }}
 
     .stTextInput > div > div > input, 
@@ -96,9 +102,9 @@ st.markdown(f"""
     }}
 
     [data-testid="column"], [data-testid="stVerticalBlock"] > div {{ width: 100% !important; flex: 1 1 100% !important; }}
-    .stButton, .stButton > button {{ width: 100% !important; display: block !important; }}
-
-    div.stButton > button {{
+    
+    /* Global button override - we exclude the info_orb here */
+    div.stButton > button:not([key="info_orb"]) {{
         background-color: #B4A7D6 !important; 
         color: #FFD4E5 !important;
         border-radius: 15px !important;
@@ -109,16 +115,10 @@ st.markdown(f"""
         margin-top: 15px !important;
     }}
 
-    div.stButton > button p {{
+    div.stButton > button:not([key="info_orb"]) p {{
         font-size: 38px !important; 
         font-weight: 800 !important;
         line-height: 1.1 !important;
-        text-align: center !important;
-    }}
-
-    div[data-testid="stVerticalBlock"] > div:last-child .stButton > button {{
-        min-height: 70px !important;
-        background-color: #D1C4E9 !important;
     }}
 
     .result-box {{
@@ -180,19 +180,16 @@ def clear_everything():
         if k in st.session_state: st.session_state[k] = ""
 
 # --- 4. UI ELEMENTS ---
+# The Info Dot
+st.button("INFO", key="info_orb", on_click=show_help)
+
 if os.path.exists("CYPHER.png"): st.image("CYPHER.png")
 if os.path.exists("Lock Lips.png"): st.image("Lock Lips.png")
 
 kw = st.text_input("Key", type="password", key="lips", placeholder="SECRET KEY").strip()
 chem_lvl = calculate_chemistry(kw)
 st.write(f"🧪 **CHEMISTRY LEVEL:** {int(chem_lvl*100)}%")
-
-# Place Orb and Progress Bar together for anchoring
-orb_col, prog_col = st.columns([1, 20])
-with orb_col:
-    st.button("Info", key="info_orb", on_click=show_help)
-with prog_col:
-    st.progress(chem_lvl)
+st.progress(chem_lvl)
 
 hint_text = st.text_input("Hint", key="hint", placeholder="KEY HINT (Optional)")
 if os.path.exists("Kiss Chemistry.png"): st.image("Kiss Chemistry.png")
@@ -212,46 +209,30 @@ st.markdown('<div class="footer-text">CREATED BY</div>', unsafe_allow_html=True)
 if kw and (kiss_btn or tell_btn):
     try:
         aad = hint_text.encode() if hint_text else None
-
         if kiss_btn:
             salt = secrets.token_bytes(SALT_SIZE)
             nonce = secrets.token_bytes(NONCE_SIZE)
-            
             with st.spinner("Refining Chemistry..."):
                 key = get_derived_key(kw, salt, T_COST, M_COST, P_FACTOR)
                 aead = ChaCha20Poly1305(key)
                 ciphertext = aead.encrypt(nonce, user_input.encode(), aad)
-            
             header = VERSION_BYTE + struct.pack(">BIB", T_COST, M_COST, P_FACTOR)
             final_payload = header + salt + nonce + ciphertext
             output = "".join(to_emoji(b) for b in final_payload)
-            
             with output_placeholder.container():
                 st.markdown(f'<div class="result-box">{output}</div>', unsafe_allow_html=True)
                 components.html(f"""<button onclick="navigator.share({{title:'Secret',text:`{output}\\n\\nHint: {hint_text}`}})" style="background-color:#B4A7D6; color:#FFD4E5; font-weight:bold; border-radius:15px; min-height:80px; width:100%; cursor:pointer; font-size: 28px; border:none; text-transform:uppercase;">SHARE ✨</button>""", height=100)
-
         if tell_btn:
             data = bytes(from_emoji_string(user_input.strip()))
             version = data[0:1]
-            
-            if version == b'\x01':
-                t, m, p = 3, 65536, 4
-                salt, nonce, ciphertext = data[1:17], data[17:29], data[29:]
-                current_aad = None 
-            elif version == b'\x02':
+            if version == b'\x02':
                 t, m, p = struct.unpack(">BIB", data[1:7])
                 salt, nonce, ciphertext = data[7:23], data[23:35], data[35:]
                 current_aad = aad
-            else:
-                st.error("⚠️ UNKNOWN VERSION")
-                st.stop()
-                
-            with st.spinner("Extracting Secret..."):
-                key = get_derived_key(kw, salt, t, m, p)
-                aead = ChaCha20Poly1305(key)
-                msg = aead.decrypt(nonce, ciphertext, current_aad).decode()
-                
-            output_placeholder.markdown(f'<div class="whisper-text">Cypher Whispers: {msg}</div>', unsafe_allow_html=True)
-            
+                with st.spinner("Extracting Secret..."):
+                    key = get_derived_key(kw, salt, t, m, p)
+                    aead = ChaCha20Poly1305(key)
+                    msg = aead.decrypt(nonce, ciphertext, current_aad).decode()
+                output_placeholder.markdown(f'<div class="whisper-text">Cypher Whispers: {msg}</div>', unsafe_allow_html=True)
     except Exception:
         st.error("🚫 CHEMISTRY ERROR: AUTHENTICATION FAILED. Check Key and Hint.")
