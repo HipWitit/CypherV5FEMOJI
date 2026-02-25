@@ -5,11 +5,12 @@ import secrets
 import hashlib
 import streamlit.components.v1 as components
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
-from cryptography.hazmat.primitives.kdf.argon2 import Argon2
+from argon2.low_level import hash_secret_raw, Type
 
 # --- 1. CONFIG & STYLING ---
 st.set_page_config(page_title="Cyfer Pro", layout="centered")
 
+# Salt & Pepper
 raw_pepper = st.secrets.get("MY_SECRET_PEPPER") or "default_fallback_spice_2026"
 PEPPER = str(raw_pepper).encode()
 NONCE_SIZE = 12 
@@ -50,6 +51,7 @@ st.markdown(f"""
         background-color: #B4A7D6 !important; color: #FFD4E5 !important;
         border-radius: 15px !important; min-height: 100px !important; 
         border: none !important; text-transform: uppercase;
+        box-shadow: 0px 4px 12px rgba(0,0,0,0.1);
     }}
     div.stButton > button p {{ font-size: 38px !important; font-weight: 800 !important; }}
     .result-box {{
@@ -66,12 +68,19 @@ st.markdown(f"""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. THE CHEMISTRY (Argon2id + ChaCha20) ---
+# --- 3. THE CHEMISTRY (Argon2id) ---
 def get_derived_key(kw):
-    # Salt derived from Pepper for consistent key generation
+    # Pure Argon2id implementation via argon2-cffi
     salt = hashlib.sha256(PEPPER).digest()[:16]
-    kdf = Argon2(memory_cost=65536, time_cost=3, parallelism=4, length=32, salt=salt)
-    return kdf.derive(kw.encode())
+    return hash_secret_raw(
+        secret=kw.encode(),
+        salt=salt,
+        time_cost=3,
+        memory_cost=65536, # 64MB
+        parallelism=4,
+        hash_len=32,
+        type=Type.ID
+    )
 
 def calculate_chemistry(password):
     if not password: return 0.0
@@ -104,11 +113,12 @@ if kw and (kiss_btn or tell_btn):
 
         if tell_btn:
             data = bytes(from_emoji_string(user_input.strip()))
+            if len(data) < NONCE_SIZE + 16: raise ValueError("Payload too short")
             nonce, cipher = data[:NONCE_SIZE], data[NONCE_SIZE:]
             msg = aead.decrypt(nonce, cipher, None).decode()
             st.markdown(f'<div class="whisper-text">Cypher Whispers: {msg}</div>', unsafe_allow_html=True)
             
-    except Exception:
-        st.error("🚫 CHEMISTRY ERROR: AUTHENTICATION FAILED.")
+    except Exception as e:
+        st.error(f"🚫 CHEMISTRY ERROR: AUTHENTICATION FAILED.")
 
 st.markdown('<div class="footer-text">CREATED BY</div>', unsafe_allow_html=True)
