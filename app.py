@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 
 # --- 1. CONFIG & STYLING ---
-st.set_page_config(page_title="Cyfer Pro: Fisher-Yates", layout="centered")
+st.set_page_config(page_title="Cyfer Pro: PRF Shuffle", layout="centered")
 
 raw_pepper = st.secrets.get("MY_SECRET_PEPPER") or "default_fallback_spice_2026"
 PEPPER = str(raw_pepper).encode()
@@ -39,7 +39,7 @@ def from_emoji_string(s):
     emojis = re.findall(r'.', s, re.UNICODE)
     return [EMOJI_TO_BYTE[char] for char in emojis if char in EMOJI_TO_BYTE]
 
-# --- 2. THE CSS (Preserving Sacred Layout) ---
+# --- 2. SACRED CSS ---
 st.markdown(f"""
     <style>
     .stApp {{ background-color: #DBDCFF !important; }}
@@ -59,12 +59,12 @@ st.markdown(f"""
         background-color: #B4A7D6 !important; color: #FFD4E5 !important;
         border-radius: 15px !important; min-height: 100px !important; 
         border: none !important; text-transform: uppercase;
-        font-weight: 800 !important; font-size: 38px !important;
     }}
+    div.stButton > button p {{ font-size: 38px !important; font-weight: 800 !important; }}
     .result-box {{
         background-color: #FEE2E9; color: #B4A7D6; padding: 15px;
         border-radius: 10px; border: 2px solid #B4A7D6; word-wrap: break-word;
-        text-align: center; font-size: 24px; font-family: "Courier New", monospace;
+        text-align: center; font-size: 24px; font-weight: bold;
     }}
     .whisper-text {{
         color: #B4A7D6; font-family: "Courier New", monospace;
@@ -74,45 +74,47 @@ st.markdown(f"""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. CRYPTOGRAPHIC PRF & FISHER-YATES ---
+# --- 3. CRYPTOGRAPHIC PRF LOGIC ---
 def get_keys_and_perms(kw):
-    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=64, salt=b"sacred_shuffle_v1", iterations=100000, backend=default_backend())
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=64, salt=b"prf_v1_stable", iterations=100000, backend=default_backend())
     master_key = kdf.derive(kw.encode() + PEPPER)
     enc_key, auth_key = master_key[:32], master_key[32:]
     
     rounds_params = []
     for i in range(ROUNDS):
-        # Round-specific seed from PRF
+        # Round-specific seed via HMAC-PRF
         round_seed = hmac.new(enc_key, i.to_bytes(4, 'big'), hashlib.sha256).digest()
         
-        # 1. PRF-Driven Fisher-Yates Shuffle
-        p = list(range(256))
+        # 1. Fisher-Yates Shuffle driven by HMAC-PRF
+        p_list = list(range(256))
         for j in range(255, 0, -1):
-            # Derive a fresh index using HMAC as a PRF
-            index_bytes = hmac.new(round_seed, j.to_bytes(4, 'big'), hashlib.sha256).digest()
-            k = int.from_bytes(index_bytes, 'big') % (j + 1)
-            p[j], p[k] = p[k], p[j]
+            # Generate a "random" index k in [0, j] using HMAC as the PRF
+            index_material = hmac.new(round_seed, j.to_bytes(4, 'big'), hashlib.sha256).digest()
+            k = int.from_bytes(index_material, 'big') % (j + 1)
+            p_list[j], p_list[k] = p_list[k], p_list[j]
         
-        # 2. Affine Parameters
-        h_param = hashlib.sha256(round_seed + b"affine").digest()
-        a = (int.from_bytes(h_param[:4], 'big') % 127) * 2 + 1 
-        b = int.from_bytes(h_param[4:8], 'big') % 256
+        # 2. Affine parameters derived from same round seed
+        h_affine = hashlib.sha256(round_seed + b"affine").digest()
+        a = (int.from_bytes(h_affine[:4], 'big') % 127) * 2 + 1 
+        b = int.from_bytes(h_affine[4:8], 'big') % 256
         
-        rounds_params.append({'a': a, 'b': b, 'p': p, 'inv_p': [p.index(v) for v in range(256)]})
+        rounds_params.append({
+            'a': a, 'b': b, 'p': p_list, 
+            'inv_p': [p_list.index(v) for v in range(256)]
+        })
     return rounds_params, auth_key
 
 def calculate_chemistry(password):
     if not password: return 0.0
     score = min(len(password) / 16, 1.0) * 0.4
-    for pattern in [r"[a-z]", r"[A-Z]", r"[0-9]", r"[ !@#$%^&*(),.?\":{}|<>]"]:
-        if re.search(pattern, password): score += 0.15
+    for regex in [r"[a-z]", r"[A-Z]", r"[0-9]", r"[ !@#$%^&*(),.?\":{}|<>]"]:
+        if re.search(regex, password): score += 0.15
     return min(score, 1.0)
 
 # --- 4. UI ---
 if os.path.exists("CYPHER.png"): st.image("CYPHER.png")
 kw = st.text_input("Key", type="password", key="lips", placeholder="SECRET KEY").strip()
 st.progress(calculate_chemistry(kw))
-
 user_input = st.text_area("Message", height=120, key="chem", placeholder="YOUR MESSAGE")
 kiss_btn, tell_btn = st.button("KISS"), st.button("TELL")
 
@@ -121,27 +123,28 @@ if kw and (kiss_btn or tell_btn):
     params, auth_key = get_keys_and_perms(kw)
     
     if kiss_btn:
-        raw_payload = bytes([secrets.randbelow(256) for _ in range(NONCE_SIZE)]) + user_input.encode()
-        prev = int.from_bytes(hashlib.sha256(b"iv").digest()[:1], 'big')
-        cipher_bytes = []
-        for byte in raw_payload:
-            current = byte ^ prev
+        nonce = bytes([secrets.randbelow(256) for _ in range(NONCE_SIZE)])
+        payload = nonce + user_input.encode('utf-8')
+        prev = int.from_bytes(hashlib.sha256(b"init").digest()[:1], 'big')
+        cipher = []
+        for byte in payload:
+            curr = byte ^ prev
             for r in range(ROUNDS):
-                current = params[r]['p'][current]
-                current = (params[r]['a'] * current + params[r]['b']) % 256
-            cipher_bytes.append(current)
-            prev = current
+                curr = params[r]['p'][curr]
+                curr = (params[r]['a'] * curr + params[r]['b']) % 256
+            cipher.append(curr)
+            prev = curr
         
-        sig = hmac.new(auth_key, bytes(cipher_bytes), hashlib.sha256).digest()[:16]
-        final_out = "".join(to_emoji(b) for b in (bytes(cipher_bytes) + sig))
-        st.markdown(f'<div class="result-box">{final_out}</div>', unsafe_allow_html=True)
+        sig = hmac.new(auth_key, bytes(cipher), hashlib.sha256).digest()[:16]
+        final = "".join(to_emoji(b) for b in (bytes(cipher) + sig))
+        st.markdown(f'<div class="result-box">{final}</div>', unsafe_allow_html=True)
 
     if tell_btn:
         try:
-            data = from_emoji_string(user_input.strip())
-            c_part, sig_part = bytes(data[:-16]), bytes(data[-16:])
+            raw = from_emoji_string(user_input.strip())
+            c_part, sig_part = bytes(raw[:-16]), bytes(raw[-16:])
             if hmac.compare_digest(hmac.new(auth_key, c_part, hashlib.sha256).digest()[:16], sig_part):
-                prev_dec = int.from_bytes(hashlib.sha256(b"iv").digest()[:1], 'big')
+                prev_dec = int.from_bytes(hashlib.sha256(b"init").digest()[:1], 'big')
                 plain = []
                 for c in c_part:
                     temp = c
@@ -151,7 +154,7 @@ if kw and (kiss_btn or tell_btn):
                     plain.append(temp ^ prev_dec)
                     prev_dec = c
                 st.markdown(f'<div class="whisper-text">{bytes(plain[NONCE_SIZE:]).decode()}</div>', unsafe_allow_html=True)
-            else: st.error("Authentication Failed")
-        except: st.error("Chemistry Error")
+            else: st.error("🚫 AUTH FAILED")
+        except: st.error("🚫 CHEMISTRY ERROR")
 
 st.markdown('<div class="footer-text">CREATED BY</div>', unsafe_allow_html=True)
