@@ -3,7 +3,7 @@ import re
 import os
 import secrets
 import hashlib
-import struct
+import struct  # Required for binary packing of parameters
 import streamlit.components.v1 as components
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 from argon2.low_level import hash_secret_raw, Type
@@ -11,14 +11,14 @@ from argon2.low_level import hash_secret_raw, Type
 # --- 1. CONFIG & CONSTANTS ---
 st.set_page_config(page_title="Cyfer Pro", layout="centered")
 
-VERSION_BYTE = b'\x02' # Upgraded to Version 2 for Parameter Encoding
+VERSION_BYTE = b'\x02' # Version 2 supports dynamic parameters
 SALT_SIZE = 16
 NONCE_SIZE = 12 
 
-# Default "Sacred" Parameters
-T_COST = 3
-M_COST = 65536 # 64MB
-P_FACTOR = 4
+# Current Sacred Parameters
+DEFAULT_T = 3
+DEFAULT_M = 65536  # 64MB
+DEFAULT_P = 4
 
 @st.cache_data
 def get_stable_emoji_list():
@@ -56,6 +56,7 @@ st.markdown(f"""
         background-color: #B4A7D6 !important; color: #FFD4E5 !important;
         border-radius: 15px !important; min-height: 100px !important; 
         border: none !important; text-transform: uppercase;
+        box-shadow: 0px 4px 12px rgba(0,0,0,0.1);
     }}
     div.stButton > button p {{ font-size: 38px !important; font-weight: 800 !important; }}
     .result-box {{
@@ -82,8 +83,8 @@ def get_derived_key(kw, salt, t, m, p):
 def calculate_chemistry(password):
     if not password: return 0.0
     score = min(len(password) / 16, 1.0) * 0.4
-    for pat in [r"[a-z]", r"[A-Z]", r"[0-9]", r"[ !@#$%^&*(),.?\":{}|<>]"]:
-        if re.search(pat, password): score += 0.15
+    for p in [r"[a-z]", r"[A-Z]", r"[0-9]", r"[ !@#$%^&*(),.?\":{}|<>]"]:
+        if re.search(p, password): score += 0.15
     return min(score, 1.0)
 
 def clear_everything():
@@ -101,7 +102,7 @@ kiss_btn, tell_btn = st.button("KISS"), st.button("TELL")
 st.button("DESTROY CHEMISTRY", on_click=clear_everything)
 st.markdown('<div class="footer-text">CREATED BY</div>', unsafe_allow_html=True)
 
-# --- 5. THE CHEMISTRY PROCESS ---
+# --- 5. EXECUTION ---
 if kw and (kiss_btn or tell_btn):
     try:
         if kiss_btn:
@@ -109,13 +110,13 @@ if kw and (kiss_btn or tell_btn):
             nonce = secrets.token_bytes(NONCE_SIZE)
             
             with st.spinner("Refining Chemistry..."):
-                key = get_derived_key(kw, salt, T_COST, M_COST, P_FACTOR)
+                key = get_derived_key(kw, salt, DEFAULT_T, DEFAULT_M, DEFAULT_P)
                 aead = ChaCha20Poly1305(key)
                 ciphertext = aead.encrypt(nonce, user_input.encode(), None)
             
-            # Pack Params: Version(1) + T(1) + M(4) + P(1)
-            params = VERSION_BYTE + struct.pack(">BIB", T_COST, M_COST, P_FACTOR)
-            final_payload = params + salt + nonce + ciphertext
+            # Pack Header: Version(1) + T(1) + M(4) + P(1) = 7 bytes
+            header = VERSION_BYTE + struct.pack(">BIB", DEFAULT_T, DEFAULT_M, DEFAULT_P)
+            final_payload = header + salt + nonce + ciphertext
             output = "".join(to_emoji(b) for b in final_payload)
             
             with output_placeholder.container():
@@ -124,15 +125,16 @@ if kw and (kiss_btn or tell_btn):
 
         if tell_btn:
             data = bytes(from_emoji_string(user_input.strip()))
-            
-            # Unpacking Header (7 bytes total for header)
             version = data[0:1]
-            if version == b'\x01': # Backward compatibility for your previous version
+            
+            if version == b'\x01':
+                # Legacy Support
+                t, m, p = 3, 65536, 4
                 salt = data[1:17]
                 nonce = data[17:29]
                 ciphertext = data[29:]
-                t, m, p = 3, 65536, 4
             elif version == b'\x02':
+                # Dynamic Support: Extract params from bytes 1-7
                 t, m, p = struct.unpack(">BIB", data[1:7])
                 salt = data[7:23]
                 nonce = data[23:35]
@@ -141,11 +143,10 @@ if kw and (kiss_btn or tell_btn):
                 st.error("⚠️ UNKNOWN CHEMISTRY VERSION")
                 st.stop()
                 
-            with st.spinner("Extracting Secret..."):
+            with st.spinner("Refining Chemistry..."):
                 key = get_derived_key(kw, salt, t, m, p)
                 aead = ChaCha20Poly1305(key)
                 msg = aead.decrypt(nonce, ciphertext, None).decode()
-                
             output_placeholder.markdown(f'<div class="whisper-text">Cypher Whispers: {msg}</div>', unsafe_allow_html=True)
             
     except Exception:
