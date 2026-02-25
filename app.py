@@ -7,11 +7,10 @@ import streamlit.components.v1 as components
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 from argon2.low_level import hash_secret_raw, Type
 
-# --- 1. CONFIG & STYLING ---
+# --- 1. CONFIG & CONSTANTS ---
 st.set_page_config(page_title="Cyfer Pro", layout="centered")
 
-raw_pepper = st.secrets.get("MY_SECRET_PEPPER") or "default_fallback_spice_2026"
-PEPPER = str(raw_pepper).encode()
+SALT_SIZE = 16
 NONCE_SIZE = 12 
 
 @st.cache_data
@@ -106,19 +105,22 @@ st.markdown(f"""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. THE CHEMISTRY (Argon2id) ---
-def get_derived_key(kw):
-    salt = hashlib.sha256(PEPPER).digest()[:16]
+# --- 3. CORE LOGIC (Argon2id + ChaCha20) ---
+def get_derived_key(kw, salt):
     return hash_secret_raw(
-        secret=kw.encode(), salt=salt, time_cost=3,
-        memory_cost=65536, parallelism=4, hash_len=32, type=Type.ID
+        secret=kw.encode(),
+        salt=salt,
+        time_cost=3,
+        memory_cost=65536,
+        parallelism=4,
+        hash_len=32,
+        type=Type.ID
     )
 
 def calculate_chemistry(password):
     if not password: return 0.0
     score = min(len(password) / 16, 1.0) * 0.4
-    patterns = [r"[a-z]", r"[A-Z]", r"[0-9]", r"[ !@#$%^&*(),.?\":{}|<>]"]
-    for p in patterns:
+    for p in [r"[a-z]", r"[A-Z]", r"[0-9]", r"[ !@#$%^&*(),.?\":{}|<>]"]:
         if re.search(p, password): score += 0.15
     return min(score, 1.0)
 
@@ -126,7 +128,7 @@ def clear_everything():
     for k in ["lips", "chem", "hint"]:
         if k in st.session_state: st.session_state[k] = ""
 
-# --- 4. UI ---
+# --- 4. UI ELEMENTS ---
 if os.path.exists("CYPHER.png"): st.image("CYPHER.png")
 if os.path.exists("Lock Lips.png"): st.image("Lock Lips.png")
 
@@ -149,27 +151,42 @@ if os.path.exists("LPB.png"):
 
 st.markdown('<div class="footer-text">CREATED BY</div>', unsafe_allow_html=True)
 
-# --- 5. EXECUTION ---
+# --- 5. THE CHEMISTRY PROCESS ---
 if kw and (kiss_btn or tell_btn):
     try:
-        with st.spinner("Refining Chemistry..."):
-            key = get_derived_key(kw)
-        aead = ChaCha20Poly1305(key)
-        
         if kiss_btn:
+            # Generate unique salt and nonce
+            salt = secrets.token_bytes(SALT_SIZE)
             nonce = secrets.token_bytes(NONCE_SIZE)
-            ciphertext = aead.encrypt(nonce, user_input.encode(), None)
-            final_payload = nonce + ciphertext
+            
+            with st.spinner("Refining Chemistry..."):
+                key = get_derived_key(kw, salt)
+                aead = ChaCha20Poly1305(key)
+                ciphertext = aead.encrypt(nonce, user_input.encode(), None)
+            
+            # STRUCTURE: SALT (16) + NONCE (12) + CIPHERTEXT
+            final_payload = salt + nonce + ciphertext
             output = "".join(to_emoji(b) for b in final_payload)
+            
             with output_placeholder.container():
                 st.markdown(f'<div class="result-box">{output}</div>', unsafe_allow_html=True)
                 components.html(f"""<button onclick="navigator.share({{title:'Secret',text:`{output}\\n\\nHint: {hint_text}`}})" style="background-color:#B4A7D6; color:#FFD4E5; font-weight:bold; border-radius:15px; min-height:80px; width:100%; cursor:pointer; font-size: 28px; border:none; text-transform:uppercase;">SHARE ✨</button>""", height=100)
 
         if tell_btn:
             data = bytes(from_emoji_string(user_input.strip()))
-            if len(data) < NONCE_SIZE + 16: raise ValueError("Invalid Payload")
-            nonce, cipher = data[:NONCE_SIZE], data[NONCE_SIZE:]
-            msg = aead.decrypt(nonce, cipher, None).decode()
+            if len(data) < (SALT_SIZE + NONCE_SIZE + 16): 
+                raise ValueError("Payload too short")
+            
+            # UNPACKING THE SACRED STRUCTURE
+            salt = data[:SALT_SIZE]
+            nonce = data[SALT_SIZE:SALT_SIZE + NONCE_SIZE]
+            ciphertext = data[SALT_SIZE + NONCE_SIZE:]
+            
+            with st.spinner("Refining Chemistry..."):
+                key = get_derived_key(kw, salt)
+                aead = ChaCha20Poly1305(key)
+                msg = aead.decrypt(nonce, ciphertext, None).decode()
+                
             output_placeholder.markdown(f'<div class="whisper-text">Cypher Whispers: {msg}</div>', unsafe_allow_html=True)
             
     except Exception:
