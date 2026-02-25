@@ -15,7 +15,7 @@ VERSION_BYTE = b'\x02'
 SALT_SIZE = 16
 NONCE_SIZE = 12 
 
-# Default Parameters
+# Sacred Parameters
 T_COST = 3
 M_COST = 65536 
 P_FACTOR = 4
@@ -156,6 +156,9 @@ st.markdown('<div class="footer-text">CREATED BY</div>', unsafe_allow_html=True)
 # --- 5. THE CHEMISTRY PROCESS ---
 if kw and (kiss_btn or tell_btn):
     try:
+        # Subtle Refinement: Binding Hint as AAD
+        aad = hint_text.encode() if hint_text else None
+
         if kiss_btn:
             salt = secrets.token_bytes(SALT_SIZE)
             nonce = secrets.token_bytes(NONCE_SIZE)
@@ -163,9 +166,9 @@ if kw and (kiss_btn or tell_btn):
             with st.spinner("Refining Chemistry..."):
                 key = get_derived_key(kw, salt, T_COST, M_COST, P_FACTOR)
                 aead = ChaCha20Poly1305(key)
-                ciphertext = aead.encrypt(nonce, user_input.encode(), None)
+                ciphertext = aead.encrypt(nonce, user_input.encode(), aad)
             
-            # HEADER: Version(1) + T(1) + M(4) + P(1)
+            # Pack Params: Version(1) + T(1) + M(4) + P(1)
             header = VERSION_BYTE + struct.pack(">BIB", T_COST, M_COST, P_FACTOR)
             final_payload = header + salt + nonce + ciphertext
             output = "".join(to_emoji(b) for b in final_payload)
@@ -181,9 +184,11 @@ if kw and (kiss_btn or tell_btn):
             if version == b'\x01':
                 t, m, p = 3, 65536, 4
                 salt, nonce, ciphertext = data[1:17], data[17:29], data[29:]
+                current_aad = None # Legacy version didn't authenticate hint
             elif version == b'\x02':
                 t, m, p = struct.unpack(">BIB", data[1:7])
                 salt, nonce, ciphertext = data[7:23], data[23:35], data[35:]
+                current_aad = aad
             else:
                 st.error("⚠️ UNKNOWN VERSION")
                 st.stop()
@@ -191,9 +196,10 @@ if kw and (kiss_btn or tell_btn):
             with st.spinner("Extracting Secret..."):
                 key = get_derived_key(kw, salt, t, m, p)
                 aead = ChaCha20Poly1305(key)
-                msg = aead.decrypt(nonce, ciphertext, None).decode()
+                # Auth fails here if the Hint input doesn't match original AAD
+                msg = aead.decrypt(nonce, ciphertext, current_aad).decode()
                 
             output_placeholder.markdown(f'<div class="whisper-text">Cypher Whispers: {msg}</div>', unsafe_allow_html=True)
             
     except Exception:
-        st.error("🚫 CHEMISTRY ERROR: AUTHENTICATION FAILED.")
+        st.error("🚫 CHEMISTRY ERROR: AUTHENTICATION FAILED. Check Key and Hint.")
