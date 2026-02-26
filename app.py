@@ -8,6 +8,13 @@ import streamlit.components.v1 as components
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 from argon2.low_level import hash_secret_raw, Type
 
+import streamlit as st
+
+# This code tells the phone: "Hey, I have an app icon ready for you!"
+st.markdown(
+    '<link rel="manifest" href="/static/manifest.json">', 
+    unsafe_allow_html=True
+)
 # --- 1. CONFIG & CONSTANTS ---
 st.set_page_config(page_title="Cyfer Pro", layout="centered")
 
