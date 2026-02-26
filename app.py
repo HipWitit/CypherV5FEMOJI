@@ -160,7 +160,7 @@ def show_help():
     <p>3. PRESS <b>KISS:</b> This turns your message into a string of emojis.</p>
     
     <h3 style="color: #B4A7D6;">👂 Whispering Secrets</h3>
-    <p>1. Paste the emojis into the <b>Message</b> box.</p>
+    <p>1. Paste the emojis and hint (If a hint was given) into the <b>Message</b> box.</p>
     <p>2. Enter the <b>Key</b> and the <b>Hint</b> (if used). <b>IMPORTANT:</b> Key and hint are case sensitive.</p>
     <p>3. PRESS <b>TELL:</b> This reveals the hidden message that Cypher whispers to you.</p>
     <hr style="border: 1px dashed #B4A7D6;">
