@@ -1,0 +1,19 @@
+{
+  "name": "Cypher's Love Language",
+  "short_name": "Cypher",
+  "start_url": "/",
+  "display": "standalone",
+  "icons": [
+    {
+      "src": "/static/cyphericon192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/cyphericon512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+
