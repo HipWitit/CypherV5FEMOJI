@@ -3,17 +3,20 @@
   "short_name": "Cypher",
   "start_url": "/",
   "display": "standalone",
+  "background_color": "#DBD6FF",
+  "theme_color": "#B4A7D6",
   "icons": [
     {
       "src": "static/cyphericon192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "static/cyphericon512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
-
